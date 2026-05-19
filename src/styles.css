@@ -66,6 +66,11 @@ button:hover {
   background: #334155;
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 button.primary {
   background: #2563eb;
   border-color: #2563eb;
@@ -111,7 +116,8 @@ button.primary:hover {
   background: #1e3a8a;
 }
 
-.archive span {
+.archive span,
+.archive em {
   color: #94a3b8;
   font-size: 13px;
 }
@@ -138,6 +144,28 @@ select {
   border: 1px solid #334155;
   background: #0f172a;
   color: #f8fafc;
+}
+
+.sheetMetaGrid,
+.modalGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sheetMetaGrid label,
+.modalGrid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sheetMetaGrid span,
+.modalGrid span {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .tableWrap {
@@ -187,6 +215,51 @@ main {
   gap: 24px;
 }
 
+.addInputAnchor {
+  position: relative;
+}
+
+.addInputPopover {
+  position: fixed;
+  top: 92px;
+  left: 328px;
+  right: 24px;
+  z-index: 1000;
+  background: #111827;
+  border: 1px solid #334155;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.addInputPopover h2 {
+  margin: 0 0 14px 0;
+  color: #f8fafc;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 12px 0;
+  color: #cbd5e1;
+}
+
+.checkboxRow input {
+  width: auto;
+}
+
+.modalWarning {
+  margin: 0 0 12px 0;
+  color: #fbbf24;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .exportScreen {
   min-height: 100vh;
   background: #0f172a;
@@ -213,11 +286,17 @@ main {
 }
 
 .exportPage h1 {
-  margin: 0 0 0.28in 0;
+  margin: 0 0 0.08in 0;
   text-align: center;
   font-size: 25px;
   line-height: 1.15;
   font-weight: 700;
+}
+
+.exportSubtitle {
+  margin: 0 0 0.28in 0;
+  color: black;
+  font-size: 14px;
 }
 
 .exportTable {
@@ -245,6 +324,18 @@ main {
 
 .sectionRow td {
   font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .addInputPopover {
+    left: 24px;
+    right: 24px;
+  }
+
+  .sheetMetaGrid,
+  .modalGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media print {
