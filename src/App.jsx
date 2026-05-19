@@ -203,13 +203,31 @@ export default function App() {
     updateActiveSheet((sheet) => ({ ...sheet, date, title: `Patch Sheet - ${formatDateForTitle(date)}` }));
   }
 
-  function exportPdf() {
-    const exportWindow = window.open("", "_blank", "width=900,height=1100");
-    if (!exportWindow) return alert("Popup blocked. Please allow popups and try again.");
-    exportWindow.document.open();
-    exportWindow.document.write(buildExportHtml(activeSheet));
-    exportWindow.document.close();
-  }
+function exportPdf() {
+  const printFrame = document.createElement("iframe");
+
+  printFrame.style.position = "fixed";
+  printFrame.style.right = "0";
+  printFrame.style.bottom = "0";
+  printFrame.style.width = "0";
+  printFrame.style.height = "0";
+  printFrame.style.border = "0";
+
+  document.body.appendChild(printFrame);
+
+  printFrame.contentDocument.open();
+  printFrame.contentDocument.write(buildExportHtml(activeSheet));
+  printFrame.contentDocument.close();
+
+  printFrame.onload = () => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+
+    setTimeout(() => {
+      document.body.removeChild(printFrame);
+    }, 1000);
+  };
+}
 
   return (
     <div className="app">
