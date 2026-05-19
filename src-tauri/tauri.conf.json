@@ -1,36 +1,20 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Waymaker Patch Sheet",
+  "version": "0.1.0",
+  "identifier": "church.waymaker.patchsheet",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:1420",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "Waymaker Patch Sheet",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": [
-        "dmg",
-        "app"
-      ],
-      "identifier": "church.waymaker.patchsheet",
-      "icon": []
-    },
+  "app": {
     "windows": [
       {
         "title": "Waymaker Patch Sheet",
-        "width": 1200,
-        "height": 850,
+        "width": 1400,
+        "height": 900,
         "resizable": true,
         "fullscreen": false
       }
@@ -38,5 +22,10 @@
     "security": {
       "csp": null
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "icon": []
   }
 }
