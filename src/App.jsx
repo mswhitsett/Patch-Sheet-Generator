@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { jsPDF } from "jspdf";
 import "./styles.css";
 
@@ -229,14 +230,19 @@ function savePatchSheetPdf(sheet) {
   createPatchSheetPdf(sheet).save(`${safeFileName(sheet.title)}.pdf`);
 }
 
-function printPatchSheetPdf(sheet) {
-  const doc = createPatchSheetPdf(sheet, { autoPrint: true });
-  const blobUrl = doc.output("bloburl");
-  const opened = window.open(blobUrl, "_blank");
+async function printPatchSheetPdf(sheet) {
+  const doc = createPatchSheetPdf(sheet);
+  const pdfBase64 = doc.output("datauristring").split(",")[1];
 
-  if (!opened) {
+  try {
+    await invoke("print_pdf", {
+      pdfBase64,
+      filename: safeFileName(sheet.title)
+    });
+  } catch (error) {
+    console.error(error);
     doc.save(`${safeFileName(sheet.title)}_Print.pdf`);
-    alert("The app could not open the print window automatically. I saved a print-ready PDF instead.");
+    alert("The app could not open Preview's print dialog automatically. I saved a print-ready PDF instead.");
   }
 }
 
