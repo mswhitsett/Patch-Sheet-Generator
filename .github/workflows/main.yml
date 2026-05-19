@@ -28,63 +28,105 @@ jobs:
         run: |
           mkdir -p src-tauri/icons/icon.iconset
           python3 - <<'PY'
-          from PIL import Image, ImageDraw
+          import math
+          import struct
+          import zlib
           from pathlib import Path
 
+          def write_png(path, width, height, pixels):
+              raw = b''.join(b'\x00' + bytes(row) for row in pixels)
+
+              def chunk(kind, data):
+                  return (
+                      struct.pack('>I', len(data)) +
+                      kind +
+                      data +
+                      struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+                  )
+
+              png = (
+                  b'\x89PNG\r\n\x1a\n' +
+                  chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
+                  chunk(b'IDAT', zlib.compress(raw, 9)) +
+                  chunk(b'IEND', b'')
+              )
+              Path(path).write_bytes(png)
+
+          def point_in_poly(x, y, poly):
+              inside = False
+              j = len(poly) - 1
+              for i in range(len(poly)):
+                  xi, yi = poly[i]
+                  xj, yj = poly[j]
+                  if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / ((yj - yi) or 1) + xi):
+                      inside = not inside
+                  j = i
+              return inside
+
+          def rounded_rect(x, y, x1, y1, rx, ry):
+              if x0 + rx <= x <= x1 - rx and y0 <= y <= y1:
+                  return True
+              if x0 <= x <= x1 and y0 + ry <= y <= y1 - ry:
+                  return True
+              corners = [
+                  (x0 + rx, y0 + ry),
+                  (x1 - rx, y0 + ry),
+                  (x0 + rx, y1 - ry),
+                  (x1 - rx, y1 - ry),
+              ]
+              return any(((x - cx) ** 2) / (rx ** 2) + ((y - cy) ** 2) / (ry ** 2) <= 1 for cx, cy in corners)
+
+          def draw_icon(size):
+              pixels = []
+              white = (245, 245, 245, 255)
+              black = (0, 0, 0, 255)
+              s = size / 1024
+
+              # Coordinates based on a simple horizontal 1/4-inch plug silhouette.
+              body = (340 * s, 348 * s, 700 * s, 520 * s, 42 * s, 42 * s)
+              handle = (250 * s, 372 * s, 340 * s, 496 * s)
+              shaft = (700 * s, 405 * s, 862 * s, 465 * s)
+              tip = [(862 * s, 405 * s), (940 * s, 435 * s), (862 * s, 465 * s)]
+              ring_cut = (760 * s, 398 * s, 778 * s, 472 * s)
+
+              global x0, y0
+
+              for y in range(size):
+                  row = []
+                  for x in range(size):
+                      px = py = False
+
+                      x0, y0, x1, y1, rx, ry = body
+                      if rounded_rect(x, y, x1, y1, rx, ry):
+                          px = True
+
+                      hx0, hy0, hx1, hy1 = handle
+                      if hx0 <= x <= hx1 and hy0 <= y <= hy1:
+                          px = True
+
+                      sx0, sy0, sx1, sy1 = shaft
+                      if sx0 <= x <= sx1 and sy0 <= y <= sy1:
+                          px = True
+
+                      if point_in_poly(x, y, tip):
+                          px = True
+
+                      cx0, cy0, cx1, cy1 = ring_cut
+                      if cx0 <= x <= cx1 and cy0 <= y <= cy1:
+                          px = False
+
+                      row.extend(white if px else black)
+                  pixels.append(row)
+              return pixels
+
           sizes = [16, 32, 64, 128, 256, 512, 1024]
-
           for size in sizes:
-              img = Image.new('RGBA', (size, size), (0, 0, 0, 255))
-              draw = ImageDraw.Draw(img)
-
-              scale = size / 1024
-
-              # Plug body
-              draw.rounded_rectangle(
-                  [
-                      350 * scale,
-                      350 * scale,
-                      700 * scale,
-                      520 * scale,
-                  ],
-                  radius=40 * scale,
-                  fill='white'
-              )
-
-              # Plug shaft
-              draw.rectangle(
-                  [
-                      700 * scale,
-                      405 * scale,
-                      860 * scale,
-                      465 * scale,
-                  ],
-                  fill='white'
-              )
-
-              # Tip
-              draw.polygon([
-                  (860 * scale, 405 * scale),
-                  (930 * scale, 435 * scale),
-                  (860 * scale, 465 * scale)
-              ], fill='white')
-
-              # Strain relief / handle
-              draw.rectangle(
-                  [
-                      280 * scale,
-                      370 * scale,
-                      350 * scale,
-                      500 * scale,
-                  ],
-                  fill='white'
-              )
-
-              img.save(f'src-tauri/icons/icon.iconset/icon_{size}x{size}.png')
+              pixels = draw_icon(size)
+              write_png(f'src-tauri/icons/icon.iconset/icon_{size}x{size}.png', size, size, pixels)
               if size <= 512:
-                  img.save(f'src-tauri/icons/icon.iconset/icon_{size}x{size}@2x.png')
+                  write_png(f'src-tauri/icons/icon.iconset/icon_{size}x{size}@2x.png', size, size, pixels)
 
-          Image.open('src-tauri/icons/icon.iconset/icon_1024x1024.png').save('src-tauri/icons/icon.png')
+          write_png('src-tauri/icons/icon.png', 1024, 1024, draw_icon(1024))
           PY
 
           iconutil -c icns src-tauri/icons/icon.iconset -o src-tauri/icons/icon.icns
