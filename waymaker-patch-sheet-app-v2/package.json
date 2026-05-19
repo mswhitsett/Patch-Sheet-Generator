@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "dev": "vite",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "@tauri-apps/api": "latest"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "latest"
+  }
+}
