@@ -2,6 +2,9 @@ name: Build Mac App
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build-macos:
@@ -21,35 +24,70 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Create placeholder app icon
+      - name: Generate app icon
         run: |
-          mkdir -p src-tauri/icons
+          mkdir -p src-tauri/icons/icon.iconset
           python3 - <<'PY'
-          import struct, zlib
+          from PIL import Image, ImageDraw
           from pathlib import Path
 
-          width = 256
-          height = 256
-          bg = bytes([15, 23, 42, 255])
-          raw = b''.join(b'\x00' + bg * width for _ in range(height))
+          sizes = [16, 32, 64, 128, 256, 512, 1024]
 
-          def chunk(kind, data):
-              return (
-                  struct.pack('>I', len(data)) +
-                  kind +
-                  data +
-                  struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)
+          for size in sizes:
+              img = Image.new('RGBA', (size, size), (0, 0, 0, 255))
+              draw = ImageDraw.Draw(img)
+
+              scale = size / 1024
+
+              # Plug body
+              draw.rounded_rectangle(
+                  [
+                      350 * scale,
+                      350 * scale,
+                      700 * scale,
+                      520 * scale,
+                  ],
+                  radius=40 * scale,
+                  fill='white'
               )
 
-          png = (
-              b'\x89PNG\r\n\x1a\n' +
-              chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0)) +
-              chunk(b'IDAT', zlib.compress(raw, 9)) +
-              chunk(b'IEND', b'')
-          )
+              # Plug shaft
+              draw.rectangle(
+                  [
+                      700 * scale,
+                      405 * scale,
+                      860 * scale,
+                      465 * scale,
+                  ],
+                  fill='white'
+              )
 
-          Path('src-tauri/icons/icon.png').write_bytes(png)
+              # Tip
+              draw.polygon([
+                  (860 * scale, 405 * scale),
+                  (930 * scale, 435 * scale),
+                  (860 * scale, 465 * scale)
+              ], fill='white')
+
+              # Strain relief / handle
+              draw.rectangle(
+                  [
+                      280 * scale,
+                      370 * scale,
+                      350 * scale,
+                      500 * scale,
+                  ],
+                  fill='white'
+              )
+
+              img.save(f'src-tauri/icons/icon.iconset/icon_{size}x{size}.png')
+              if size <= 512:
+                  img.save(f'src-tauri/icons/icon.iconset/icon_{size}x{size}@2x.png')
+
+          Image.open('src-tauri/icons/icon.iconset/icon_1024x1024.png').save('src-tauri/icons/icon.png')
           PY
+
+          iconutil -c icns src-tauri/icons/icon.iconset -o src-tauri/icons/icon.icns
 
       - name: Update Rust dependencies
         run: cargo update
