@@ -27,7 +27,7 @@ jobs:
       - name: Generate app icon from repo source
         run: |
           mkdir -p src-tauri/icons/icon.iconset
-          base64 --decode src-tauri/icons/source-icon.b64 > src-tauri/icons/icon.png
+          base64 -D -i src-tauri/icons/source-icon.b64 -o src-tauri/icons/icon.png
 
           sips -z 16 16 src-tauri/icons/icon.png --out src-tauri/icons/icon.iconset/icon_16x16.png
           sips -z 32 32 src-tauri/icons/icon.png --out src-tauri/icons/icon.iconset/icon_16x16@2x.png
