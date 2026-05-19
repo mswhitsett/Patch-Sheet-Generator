@@ -3,12 +3,14 @@
   "productName": "Waymaker Patch Sheet",
   "version": "0.1.0",
   "identifier": "church.waymaker.patchsheet",
+
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
+
   "app": {
     "windows": [
       {
@@ -19,13 +21,14 @@
         "fullscreen": false
       }
     ],
+
     "security": {
       "csp": null
     }
   },
+
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app"],
-    "icon": []
+    "targets": ["dmg", "app"]
   }
 }
