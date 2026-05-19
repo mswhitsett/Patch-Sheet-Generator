@@ -147,9 +147,9 @@ function safeLoadSheets() {
   }
 }
 
-export default function App() {
-  const [sheets, setSheets] = useState(safeLoadSheets);
-  const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
+const [sheets, setSheets] = useState(safeLoadSheets);
+const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
+const [isExportView, setIsExportView] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
@@ -204,29 +204,74 @@ export default function App() {
   }
 
 function exportPdf() {
-  const printFrame = document.createElement("iframe");
+  setIsExportView(true);
+}
 
-  printFrame.style.position = "fixed";
-  printFrame.style.right = "0";
-  printFrame.style.bottom = "0";
-  printFrame.style.width = "0";
-  printFrame.style.height = "0";
-  printFrame.style.border = "0";
+if (isExportView) {
+  const sorted = sortForExport(activeSheet.rows);
+  const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
+  const danteRows = sorted.filter((row) => row.sourceType === "Dante");
 
-  document.body.appendChild(printFrame);
+  function ExportRow({ row }) {
+    const translated = translatePatch(row.sourceType, row.input);
 
-  printFrame.contentDocument.open();
-  printFrame.contentDocument.write(buildExportHtml(activeSheet));
-  printFrame.contentDocument.close();
+    return (
+      <tr>
+        <td>{row.instrument}</td>
+        <td>{translated.foh}</td>
+        <td>{translated.broadcast}</td>
+      </tr>
+    );
+  }
 
-  printFrame.onload = () => {
-    printFrame.contentWindow.focus();
-    printFrame.contentWindow.print();
+  return (
+    <div className="exportScreen">
+      <div className="exportActions">
+        <button onClick={() => setIsExportView(false)}>
+          Back to Editor
+        </button>
 
-    setTimeout(() => {
-      document.body.removeChild(printFrame);
-    }, 1000);
-  };
+        <button
+          className="primary"
+          onClick={() => window.print()}
+        >
+          Print / Save PDF
+        </button>
+      </div>
+
+      <div className="exportPage">
+        <h1>{activeSheet.title}</h1>
+
+        <table className="exportTable">
+          <thead>
+            <tr>
+              <th>Instrument</th>
+              <th>FOH Patch</th>
+              <th>Broadcast Patch</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {standardRows.map((row) => (
+              <ExportRow key={row.id} row={row} />
+            ))}
+
+            {danteRows.length > 0 && (
+              <>
+                <tr className="sectionRow">
+                  <td colSpan="3">DANTE</td>
+                </tr>
+
+                {danteRows.map((row) => (
+                  <ExportRow key={row.id} row={row} />
+                ))}
+              </>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
   return (
