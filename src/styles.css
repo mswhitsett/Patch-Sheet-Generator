@@ -1,7 +1,7 @@
 :root {
   font-family: Inter, system-ui, sans-serif;
-  color: #f8fafc;
-  background: #0f172a;
+  color: #ececec;
+  background: #171717;
 }
 
 * {
@@ -10,8 +10,8 @@
 
 body {
   margin: 0;
-  background: #0f172a;
-  color: #f8fafc;
+  background: #171717;
+  color: #ececec;
 }
 
 button,
@@ -22,7 +22,7 @@ select {
 
 .app {
   min-height: 100vh;
-  background: #0f172a;
+  background: #171717;
   padding: 24px;
 }
 
@@ -35,15 +35,17 @@ select {
 }
 
 .eyebrow {
-  color: #94a3b8;
-  font-size: 14px;
+  color: #8e8e8e;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .topbar h1 {
   margin: 0;
   font-size: 34px;
-  color: #f8fafc;
+  color: #f5f5f5;
+  font-weight: 650;
 }
 
 .actions {
@@ -53,17 +55,18 @@ select {
 }
 
 button {
-  border: 1px solid #334155;
-  background: #1e293b;
-  color: #f8fafc;
+  border: 1px solid #3a3a3a;
+  background: #2a2a2a;
+  color: #ececec;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 button:hover {
-  background: #334155;
+  background: #343434;
+  border-color: #4a4a4a;
 }
 
 button:disabled {
@@ -72,12 +75,12 @@ button:disabled {
 }
 
 button.primary {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #303030;
+  border-color: #4a4a4a;
 }
 
 button.primary:hover {
-  background: #1d4ed8;
+  background: #3a3a3a;
 }
 
 .layout {
@@ -89,16 +92,17 @@ button.primary:hover {
 .archive,
 .card,
 .warning {
-  background: #111827;
-  border: 1px solid #1f2937;
-  border-radius: 18px;
+  background: #212121;
+  border: 1px solid #2d2d2d;
+  border-radius: 20px;
   padding: 20px;
 }
 
 .archive h2,
 .card h2 {
   margin-top: 0;
-  color: #f8fafc;
+  color: #f5f5f5;
+  font-weight: 600;
 }
 
 .archive button {
@@ -108,17 +112,22 @@ button.primary:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: #1e293b;
+  background: #262626;
+  border-color: transparent;
+}
+
+.archive button:hover {
+  background: #2e2e2e;
 }
 
 .archive button.active {
-  border-color: #3b82f6;
-  background: #1e3a8a;
+  background: #303030;
+  border: 1px solid #4b4b4b;
 }
 
 .archive span,
 .archive em {
-  color: #94a3b8;
+  color: #8e8e8e;
   font-size: 13px;
 }
 
@@ -128,22 +137,24 @@ button.primary:hover {
   font-weight: 700;
   border: none;
   background: transparent;
-  color: #f8fafc;
+  color: #f5f5f5;
   margin-bottom: 10px;
-}
-
-.dateInput {
-  margin-bottom: 16px;
 }
 
 input,
 select {
   width: 100%;
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #3a3a3a;
+  background: #2a2a2a;
+  color: #ececec;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #5a5a5a;
 }
 
 .sheetMetaGrid,
@@ -163,8 +174,8 @@ select {
 
 .sheetMetaGrid span,
 .modalGrid span {
-  color: #94a3b8;
-  font-size: 13px;
+  color: #8e8e8e;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -178,35 +189,59 @@ table {
 }
 
 thead {
-  background: #1e293b;
+  background: #262626;
 }
 
 th,
 td {
   padding: 12px;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid #303030;
   text-align: left;
 }
 
 th {
-  color: #cbd5e1;
+  color: #a1a1a1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .patch {
   font-weight: 600;
+  color: #e6e6e6;
 }
 
 .muted {
-  color: #94a3b8;
+  color: #8e8e8e;
 }
 
 .warning {
-  border-color: #92400e;
-  background: #3b2f12;
+  border-color: rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.06);
 }
 
 .conflictRow {
   background: rgba(239, 68, 68, 0.08);
+}
+
+.inputConflict {
+  border-color: rgba(239, 68, 68, 0.65) !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+.modalConflict {
+  color: #f87171;
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.lastAdded {
+  color: #9ca3af;
+  font-size: 14px;
+  margin: 0 0 12px 0;
 }
 
 main {
@@ -225,16 +260,17 @@ main {
   left: 328px;
   right: 24px;
   z-index: 1000;
-  background: #111827;
-  border: 1px solid #334155;
-  border-radius: 18px;
+  background: #212121;
+  border: 1px solid #343434;
+  border-radius: 20px;
   padding: 20px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
 }
 
 .addInputPopover h2 {
   margin: 0 0 14px 0;
-  color: #f8fafc;
+  color: #f5f5f5;
 }
 
 .checkboxRow {
@@ -242,7 +278,7 @@ main {
   align-items: center;
   gap: 10px;
   margin: 2px 0 12px 0;
-  color: #cbd5e1;
+  color: #d4d4d4;
 }
 
 .checkboxRow input {
@@ -262,7 +298,7 @@ main {
 
 .exportScreen {
   min-height: 100vh;
-  background: #0f172a;
+  background: #171717;
   padding: 24px;
 }
 
