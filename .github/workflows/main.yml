@@ -20,7 +20,11 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-
+        
+      - name: Update Rust dependencies
+        run: cargo update
+        working-directory: src-tauri
+        
       - name: Build Tauri App
         run: npm run tauri:build
 
