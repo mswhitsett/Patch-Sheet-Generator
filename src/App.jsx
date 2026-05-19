@@ -12,6 +12,7 @@ const instrumentGroups = [
   { label: "Keys / Strings", instruments: ["Piano L", "Piano R", "Keys L", "Keys R", "Cello", "Violin"] },
   { label: "Electric / Acoustic Guitars", instruments: ["EG1 L", "EG1 R", "EG2 L", "EG2 R", "Acoustic 1", "Acoustic 2"] },
   { label: "Vocals", instruments: ["BGVS 1", "BGVS 2", "BGVS 3", "BGVS 4"] },
+  { label: "Talkback", instruments: ["Talkback Drums", "Talkback Keys", "Talkback MD", "Talkback"] },
   { label: "Dante / Tracks", instruments: ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click"] }
 ];
 
@@ -25,8 +26,9 @@ const sortOrder = {
   "Keys / Strings": 4,
   "Electric / Acoustic Guitars": 5,
   Vocals: 6,
-  Other: 7,
-  "Dante / Tracks": 8
+  Talkback: 7,
+  Other: 8,
+  "Dante / Tracks": 9
 };
 
 const drumSortOrder = [
@@ -179,6 +181,10 @@ function findConflicts(rows) {
   return [...map.entries()]
     .filter(([, matches]) => matches.length > 1)
     .map(([key, matches]) => ({ key, input: formatPhysicalPatch(matches[0]), instruments: matches.map((row) => row.instrument || "Unnamed input") }));
+}
+
+function getInputAssignment(rows, sourceType, input) {
+  return rows.find((row) => row.sourceType === sourceType && Number(row.input) === Number(input));
 }
 
 function getStereoMate(instrument) {
@@ -350,6 +356,7 @@ export default function App() {
   const [isExportView, setIsExportView] = useState(false);
   const [isAddPopoverOpen, setIsAddPopoverOpen] = useState(false);
   const [newInput, setNewInput] = useState(blankNewInput);
+  const [lastAddedInput, setLastAddedInput] = useState(null);
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
@@ -362,6 +369,7 @@ export default function App() {
   const changes = useMemo(() => previousSheet ? compareRows(previousSheet.rows, activeSheet.rows) : [], [previousSheet, activeSheet]);
   const conflicts = useMemo(() => findConflicts(activeSheet.rows), [activeSheet.rows]);
   const stereoWarnings = useMemo(() => findStereoWarnings(activeSheet.rows), [activeSheet.rows]);
+  const popupConflict = getInputAssignment(activeSheet.rows, newInput.sourceType, newInput.input);
 
   function updateActiveSheet(updater) {
     setSheets((current) => current.map((sheet) => sheet.id === activeSheet.id ? updater(sheet) : sheet));
@@ -382,6 +390,7 @@ export default function App() {
 
   function openAddInputPopover() {
     setNewInput(blankNewInput());
+    setLastAddedInput(null);
     setIsAddPopoverOpen((current) => !current);
   }
 
@@ -393,9 +402,8 @@ export default function App() {
       rowsToAdd.push({ id: createId(), instrument: mate, sourceType: newInput.sourceType, input: Number(newInput.input) + 1 });
     }
     updateActiveSheet((sheet) => ({ ...sheet, rows: [...sheet.rows, ...rowsToAdd] }));
-    if (keepOpen) {
-      setNewInput(blankNewInput());
-    } else {
+    setLastAddedInput({ instrument: newInput.instrument, sourceType: newInput.sourceType, input: Number(newInput.input) });
+    if (!keepOpen) {
       setIsAddPopoverOpen(false);
       setNewInput(blankNewInput());
     }
@@ -478,9 +486,11 @@ export default function App() {
                 <h2>Add Input</h2>
                 <div className="modalGrid">
                   <label><span>Instrument</span><select value={newInput.instrument} onChange={(e) => { const instrument = e.target.value; setNewInput((current) => ({ ...current, instrument, sourceType: danteInstruments.includes(instrument) ? "Dante" : current.sourceType, addStereoMate: isLeftStereoInstrument(instrument) ? current.addStereoMate : false })); }}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></label>
-                  <label><span>Source</span><select value={newInput.sourceType} onChange={(e) => setNewInput((current) => ({ ...current, sourceType: e.target.value, input: 1 }))}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-                  <label><span>Channel</span><select value={newInput.input} onChange={(e) => setNewInput((current) => ({ ...current, input: Number(e.target.value) }))}>{getInputOptions(newInput.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></label>
+                  <label><span>Source</span><select className={popupConflict ? "inputConflict" : ""} value={newInput.sourceType} onChange={(e) => setNewInput((current) => ({ ...current, sourceType: e.target.value, input: 1 }))}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                  <label><span>Channel</span><select className={popupConflict ? "inputConflict" : ""} value={newInput.input} onChange={(e) => setNewInput((current) => ({ ...current, input: Number(e.target.value) }))}>{getInputOptions(newInput.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></label>
                 </div>
+                {popupConflict && <p className="modalConflict">Already assigned to {popupConflict.instrument || "Unnamed input"} on {formatPhysicalPatch(popupConflict)}.</p>}
+                {lastAddedInput && <p className="lastAdded">Last added: {lastAddedInput.instrument} on {lastAddedInput.sourceType} ch{lastAddedInput.input}</p>}
                 {canAddStereoMate && <label className="checkboxRow"><input type="checkbox" checked={newInput.addStereoMate} onChange={(e) => setNewInput((current) => ({ ...current, addStereoMate: e.target.checked }))} /> Add stereo mate: {modalStereoMate} on ch{Number(newInput.input) + 1}</label>}
                 {canAddStereoMate && Number(newInput.input) % 2 === 0 && <p className="modalWarning">This stereo pair starts on an even input. Consider starting on an odd channel.</p>}
                 <div className="modalActions"><button onClick={() => setIsAddPopoverOpen(false)}>Cancel</button><button disabled={!newInput.instrument} onClick={() => addInput({ keepOpen: true })}>Add Another</button><button className="primary" disabled={!newInput.instrument} onClick={() => addInput()}>Add Input</button></div>
