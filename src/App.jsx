@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
+import { jsPDF } from "jspdf";
 import "./styles.css";
 
 const sourceTypes = ["DX1", "DX2", "DX3", "DX4", "Dante"];
@@ -13,7 +14,6 @@ const instrumentGroups = [
   { label: "Dante / Tracks", instruments: ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click"] }
 ];
 
-const instrumentOptions = instrumentGroups.flatMap((group) => group.instruments);
 const danteInstruments = ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click", "Keys L", "Keys R"];
 
 const starterSheet = {
@@ -121,23 +121,6 @@ function findConflicts(rows) {
     .map(([key, matches]) => ({ key, input: formatPhysicalPatch(matches[0]), instruments: matches.map((row) => row.instrument || "Unnamed input") }));
 }
 
-function escapeHtml(value) {
-  return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
-}
-
-function buildExportHtml(sheet) {
-  const sorted = sortForExport(sheet.rows);
-  const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
-  const danteRows = sorted.filter((row) => row.sourceType === "Dante");
-  const tableRow = (row) => {
-    const translated = translatePatch(row.sourceType, row.input);
-    return `<tr><td>${escapeHtml(row.instrument)}</td><td>${escapeHtml(translated.foh)}</td><td>${escapeHtml(translated.broadcast)}</td></tr>`;
-  };
-  return `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeHtml(sheet.title)}</title><style>
-    @page{size:letter;margin:0.65in 0.5in}*{box-sizing:border-box}body{margin:0;background:white;color:black;font-family:Arial,Helvetica,sans-serif}.page{width:100%;display:flex;flex-direction:column;align-items:center;padding-top:.45in}h1{margin:0 0 .28in 0;text-align:center;font-size:25px;line-height:1.15;font-weight:700}table{border-collapse:collapse;border:1px solid #000;font-size:16px;line-height:1.15}th,td{border:1px solid #000;padding:5px 11px;text-align:left;white-space:nowrap;font-weight:400}th,.section-row td{background:#d9d9d9}.section-row td{font-weight:700}
-  </style></head><body><div class="page"><h1>${escapeHtml(sheet.title)}</h1><table><thead><tr><th>Instrument</th><th>FOH Patch</th><th>Broadcast Patch</th></tr></thead><tbody>${standardRows.map(tableRow).join("")}${danteRows.length ? `<tr class="section-row"><td colspan="3">DANTE</td></tr>${danteRows.map(tableRow).join("")}` : ""}</tbody></table></div><script>window.onload=function(){window.print()};</script></body></html>`;
-}
-
 function safeLoadSheets() {
   try {
     const saved = localStorage.getItem("waymakerPatchSheets");
@@ -145,6 +128,77 @@ function safeLoadSheets() {
   } catch {
     return [starterSheet];
   }
+}
+
+function safeFileName(value) {
+  return String(value || "Patch Sheet")
+    .replace(/[^a-z0-9\-_ ]/gi, "")
+    .trim()
+    .replaceAll(" ", "_");
+}
+
+function savePatchSheetPdf(sheet) {
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+
+  const pageWidth = 612;
+  const titleY = 72;
+  const tableTop = 120;
+  const rowHeight = 22;
+  const colWidths = [170, 150, 160];
+  const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
+  const startX = (pageWidth - tableWidth) / 2;
+
+  const sorted = sortForExport(sheet.rows);
+  const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
+  const danteRows = sorted.filter((row) => row.sourceType === "Dante");
+
+  function drawCell(text, x, y, width, height, fill = false, bold = false) {
+    if (fill) {
+      doc.setFillColor(217, 217, 217);
+      doc.rect(x, y, width, height, "F");
+    }
+
+    doc.setDrawColor(0, 0, 0);
+    doc.rect(x, y, width, height);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(12);
+    doc.text(String(text || ""), x + 8, y + 15);
+  }
+
+  function drawRow(row, y) {
+    const translated = translatePatch(row.sourceType, row.input);
+    drawCell(row.instrument, startX, y, colWidths[0], rowHeight);
+    drawCell(translated.foh, startX + colWidths[0], y, colWidths[1], rowHeight);
+    drawCell(translated.broadcast, startX + colWidths[0] + colWidths[1], y, colWidths[2], rowHeight);
+  }
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text(sheet.title, pageWidth / 2, titleY, { align: "center" });
+
+  let y = tableTop;
+  drawCell("Instrument", startX, y, colWidths[0], rowHeight, true);
+  drawCell("FOH Patch", startX + colWidths[0], y, colWidths[1], rowHeight, true);
+  drawCell("Broadcast Patch", startX + colWidths[0] + colWidths[1], y, colWidths[2], rowHeight, true);
+  y += rowHeight;
+
+  standardRows.forEach((row) => {
+    drawRow(row, y);
+    y += rowHeight;
+  });
+
+  if (danteRows.length > 0) {
+    drawCell("DANTE", startX, y, tableWidth, rowHeight, true, true);
+    y += rowHeight;
+    danteRows.forEach((row) => {
+      drawRow(row, y);
+      y += rowHeight;
+    });
+  }
+
+  doc.save(`${safeFileName(sheet.title)}.pdf`);
 }
 
 export default function App() {
@@ -204,11 +258,9 @@ export default function App() {
     updateActiveSheet((sheet) => ({ ...sheet, date, title: `Patch Sheet - ${formatDateForTitle(date)}` }));
   }
 
-function exportPdf() {
+  function exportPdf() {
     setIsExportView(true);
   }
-
-
 
   if (isExportView) {
     const sorted = sortForExport(activeSheet.rows);
@@ -217,7 +269,6 @@ function exportPdf() {
 
     function ExportRow({ row }) {
       const translated = translatePatch(row.sourceType, row.input);
-
       return (
         <tr>
           <td>{row.instrument}</td>
@@ -231,7 +282,7 @@ function exportPdf() {
       <div className="exportScreen">
         <div className="exportActions">
           <button onClick={() => setIsExportView(false)}>Back to Editor</button>
-          <button className="primary" onClick={() => window.print()}>Print / Save PDF</button>
+          <button className="primary" onClick={() => savePatchSheetPdf(activeSheet)}>Save PDF</button>
         </div>
 
         <div className="exportPage">
@@ -245,18 +296,13 @@ function exportPdf() {
               </tr>
             </thead>
             <tbody>
-              {standardRows.map((row) => (
-                <ExportRow key={row.id} row={row} />
-              ))}
-
+              {standardRows.map((row) => <ExportRow key={row.id} row={row} />)}
               {danteRows.length > 0 && (
                 <>
                   <tr className="sectionRow">
                     <td colSpan="3">DANTE</td>
                   </tr>
-                  {danteRows.map((row) => (
-                    <ExportRow key={row.id} row={row} />
-                  ))}
+                  {danteRows.map((row) => <ExportRow key={row.id} row={row} />)}
                 </>
               )}
             </tbody>
@@ -269,37 +315,116 @@ function exportPdf() {
   return (
     <div className="app">
       <header className="topbar">
-        <div><div className="eyebrow">Waymaker AVL</div><h1>Patch Sheet App</h1></div>
-        <div className="actions"><button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button><button onClick={addRow}>Add Input</button><button onClick={exportPdf}>Export PDF</button></div>
+        <div>
+          <div className="eyebrow">Waymaker AVL</div>
+          <h1>Patch Sheet App</h1>
+        </div>
+        <div className="actions">
+          <button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button>
+          <button onClick={addRow}>Add Input</button>
+          <button onClick={exportPdf}>Export PDF</button>
+        </div>
       </header>
 
       <div className="layout">
-        <aside className="archive"><h2>Archive</h2>{sheets.map((sheet) => <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}><strong>{sheet.title}</strong><span>{sheet.date}</span></button>)}</aside>
+        <aside className="archive">
+          <h2>Archive</h2>
+          {sheets.map((sheet) => (
+            <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}>
+              <strong>{sheet.title}</strong>
+              <span>{sheet.date}</span>
+            </button>
+          ))}
+        </aside>
 
         <main>
-          {conflicts.length > 0 && <section className="warning"><strong>Patch conflicts found:</strong>{conflicts.map((conflict) => <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>)}</section>}
+          {conflicts.length > 0 && (
+            <section className="warning">
+              <strong>Patch conflicts found:</strong>
+              {conflicts.map((conflict) => (
+                <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>
+              ))}
+            </section>
+          )}
 
           <section className="card">
             <input className="titleInput" value={activeSheet.title} onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, title: e.target.value }))} />
             <input className="dateInput" type="date" value={activeSheet.date} onChange={(e) => updateSheetDate(e.target.value)} />
-            <div className="tableWrap"><table><thead><tr><th>Instrument</th><th>Source</th><th>Physical Input</th><th>FOH Patch</th><th>Broadcast Patch</th><th></th></tr></thead><tbody>
-              {activeSheet.rows.map((row) => {
-                const translated = translatePatch(row.sourceType, row.input);
-                const hasConflict = conflicts.some((conflict) => conflict.input === formatPhysicalPatch(row));
-                return <tr key={row.id} className={hasConflict ? "conflictRow" : ""}>
-                  <td><select value={row.instrument} onChange={(e) => updateRow(row.id, "instrument", e.target.value)}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></td>
-                  <td><select value={row.sourceType} onChange={(e) => updateRow(row.id, "sourceType", e.target.value)}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></td>
-                  <td><select value={row.input} onChange={(e) => updateRow(row.id, "input", Number(e.target.value))}>{getInputOptions(row.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></td>
-                  <td className="patch">{translated.foh}</td><td className="patch">{translated.broadcast}</td><td><button onClick={() => deleteRow(row.id)}>Delete</button></td>
-                </tr>
-              })}
-            </tbody></table></div>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Instrument</th>
+                    <th>Source</th>
+                    <th>Physical Input</th>
+                    <th>FOH Patch</th>
+                    <th>Broadcast Patch</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeSheet.rows.map((row) => {
+                    const translated = translatePatch(row.sourceType, row.input);
+                    const hasConflict = conflicts.some((conflict) => conflict.input === formatPhysicalPatch(row));
+                    return (
+                      <tr key={row.id} className={hasConflict ? "conflictRow" : ""}>
+                        <td>
+                          <select value={row.instrument} onChange={(e) => updateRow(row.id, "instrument", e.target.value)}>
+                            <option value="">Select Instrument</option>
+                            {instrumentGroups.map((group) => (
+                              <optgroup key={group.label} label={group.label}>
+                                {group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select value={row.sourceType} onChange={(e) => updateRow(row.id, "sourceType", e.target.value)}>
+                            {sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                          </select>
+                        </td>
+                        <td>
+                          <select value={row.input} onChange={(e) => updateRow(row.id, "input", Number(e.target.value))}>
+                            {getInputOptions(row.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}
+                          </select>
+                        </td>
+                        <td className="patch">{translated.foh}</td>
+                        <td className="patch">{translated.broadcast}</td>
+                        <td><button onClick={() => deleteRow(row.id)}>Delete</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </section>
 
-          <section className="card"><h2>Change Review</h2>
+          <section className="card">
+            <h2>Change Review</h2>
             {!previousSheet && <p className="muted">No previous sheet selected for comparison yet.</p>}
             {previousSheet && changes.length === 0 && <p className="muted">No patch changes from the previous archived sheet.</p>}
-            {changes.length > 0 && <table><thead><tr><th>Type</th><th>Instrument</th><th>Previous</th><th>Current</th></tr></thead><tbody>{changes.map((change, index) => <tr key={`${change.instrument}-${index}`}><td className="patch">{change.type}</td><td>{change.instrument}</td><td className="muted">{change.before}</td><td>{change.after}</td></tr>)}</tbody></table>}
+            {changes.length > 0 && (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Instrument</th>
+                    <th>Previous</th>
+                    <th>Current</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {changes.map((change, index) => (
+                    <tr key={`${change.instrument}-${index}`}>
+                      <td className="patch">{change.type}</td>
+                      <td>{change.instrument}</td>
+                      <td className="muted">{change.before}</td>
+                      <td>{change.after}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </section>
         </main>
       </div>
