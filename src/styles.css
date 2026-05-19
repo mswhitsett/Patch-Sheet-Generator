@@ -186,3 +186,91 @@ main {
   flex-direction: column;
   gap: 24px;
 }
+
+.exportScreen {
+  min-height: 100vh;
+  background: #0f172a;
+  padding: 24px;
+}
+
+.exportActions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.exportPage {
+  background: white;
+  color: black;
+  width: 8.5in;
+  min-height: 11in;
+  margin: 0 auto;
+  padding: 1.1in 0.5in;
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.exportPage h1 {
+  margin: 0 0 0.28in 0;
+  text-align: center;
+  font-size: 25px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.exportTable {
+  width: auto;
+  border-collapse: collapse;
+  border: 1px solid black;
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.exportTable th,
+.exportTable td {
+  border: 1px solid black;
+  padding: 5px 11px;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 400;
+  color: black;
+}
+
+.exportTable th,
+.sectionRow td {
+  background: #d9d9d9;
+}
+
+.sectionRow td {
+  font-weight: 700;
+}
+
+@media print {
+  body {
+    background: white;
+  }
+
+  .exportActions {
+    display: none;
+  }
+
+  .exportScreen {
+    background: white;
+    padding: 0;
+  }
+
+  .exportPage {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  @page {
+    size: letter;
+    margin: 0.65in 0.5in;
+  }
+}
