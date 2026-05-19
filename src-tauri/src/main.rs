@@ -24,38 +24,25 @@ fn print_pdf(pdf_base64: String, filename: String) -> Result<(), String> {
 
     let script = format!(
         r#"
-        set pdfPath to POSIX file "{}"
-
         tell application "Preview"
             activate
-            open pdfPath
+            open POSIX file "{}"
         end tell
 
         delay 2
 
         tell application "System Events"
-            tell process "Preview"
-                set frontmost to true
-                delay 0.5
-                keystroke "p" using command down
-            end tell
+            keystroke "p" using command down
         end tell
         "#,
         temp_path.display()
     );
 
-    let output = Command::new("osascript")
+    Command::new("osascript")
         .arg("-e")
         .arg(script)
         .output()
         .map_err(|e| format!("Failed to launch Preview: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Preview opened, but macOS did not allow the print shortcut: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
 
     Ok(())
 }
