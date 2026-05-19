@@ -24,10 +24,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Generate app icon from PNG
+      - name: Prepare app icon
+        run: |
+          cp src-tauri/icons/appicon.dat src-tauri/icons/icon.png
+
+      - name: Generate app icon set
         run: |
           mkdir -p src-tauri/icons/icon.iconset
-
           sips -z 16 16 src-tauri/icons/icon.png --out src-tauri/icons/icon.iconset/icon_16x16.png
           sips -z 32 32 src-tauri/icons/icon.png --out src-tauri/icons/icon.iconset/icon_16x16@2x.png
           sips -z 32 32 src-tauri/icons/icon.png --out src-tauri/icons/icon.iconset/icon_32x32.png
