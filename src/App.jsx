@@ -137,20 +137,31 @@ function safeFileName(value) {
     .replaceAll(" ", "_");
 }
 
-function savePatchSheetPdf(sheet) {
+function createPatchSheetPdf(sheet, options = {}) {
+  const { autoPrint = false } = options;
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
 
   const pageWidth = 612;
-  const titleY = 72;
-  const tableTop = 120;
-  const rowHeight = 22;
+  const pageHeight = 792;
+  const margin = { top: 54, right: 36, bottom: 54, left: 36 };
+  const titleY = margin.top;
+  const tableTop = margin.top + 48;
+  const rowHeight = 20;
   const colWidths = [170, 150, 160];
   const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
   const startX = (pageWidth - tableWidth) / 2;
+  const bottomLimit = pageHeight - margin.bottom;
 
   const sorted = sortForExport(sheet.rows);
   const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
   const danteRows = sorted.filter((row) => row.sourceType === "Dante");
+
+  function drawTitle() {
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(sheet.title, pageWidth / 2, titleY, { align: "center" });
+  }
 
   function drawCell(text, x, y, width, height, fill = false, bold = false) {
     if (fill) {
@@ -163,7 +174,21 @@ function savePatchSheetPdf(sheet) {
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", bold ? "bold" : "normal");
     doc.setFontSize(12);
-    doc.text(String(text || ""), x + 8, y + 15);
+    doc.text(String(text || ""), x + 8, y + 14);
+  }
+
+  function drawHeader(y) {
+    drawCell("Instrument", startX, y, colWidths[0], rowHeight, true);
+    drawCell("FOH Patch", startX + colWidths[0], y, colWidths[1], rowHeight, true);
+    drawCell("Broadcast Patch", startX + colWidths[0] + colWidths[1], y, colWidths[2], rowHeight, true);
+    return y + rowHeight;
+  }
+
+  function ensureSpace(y, neededRows = 1) {
+    if (y + rowHeight * neededRows <= bottomLimit) return y;
+    doc.addPage();
+    drawTitle();
+    return drawHeader(tableTop);
   }
 
   function drawRow(row, y) {
@@ -171,34 +196,48 @@ function savePatchSheetPdf(sheet) {
     drawCell(row.instrument, startX, y, colWidths[0], rowHeight);
     drawCell(translated.foh, startX + colWidths[0], y, colWidths[1], rowHeight);
     drawCell(translated.broadcast, startX + colWidths[0] + colWidths[1], y, colWidths[2], rowHeight);
+    return y + rowHeight;
   }
 
-  doc.setTextColor(0, 0, 0);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text(sheet.title, pageWidth / 2, titleY, { align: "center" });
-
-  let y = tableTop;
-  drawCell("Instrument", startX, y, colWidths[0], rowHeight, true);
-  drawCell("FOH Patch", startX + colWidths[0], y, colWidths[1], rowHeight, true);
-  drawCell("Broadcast Patch", startX + colWidths[0] + colWidths[1], y, colWidths[2], rowHeight, true);
-  y += rowHeight;
+  drawTitle();
+  let y = drawHeader(tableTop);
 
   standardRows.forEach((row) => {
-    drawRow(row, y);
-    y += rowHeight;
+    y = ensureSpace(y);
+    y = drawRow(row, y);
   });
 
   if (danteRows.length > 0) {
+    y = ensureSpace(y, 2);
     drawCell("DANTE", startX, y, tableWidth, rowHeight, true, true);
     y += rowHeight;
+
     danteRows.forEach((row) => {
-      drawRow(row, y);
-      y += rowHeight;
+      y = ensureSpace(y);
+      y = drawRow(row, y);
     });
   }
 
-  doc.save(`${safeFileName(sheet.title)}.pdf`);
+  if (autoPrint) {
+    doc.autoPrint();
+  }
+
+  return doc;
+}
+
+function savePatchSheetPdf(sheet) {
+  createPatchSheetPdf(sheet).save(`${safeFileName(sheet.title)}.pdf`);
+}
+
+function printPatchSheetPdf(sheet) {
+  const doc = createPatchSheetPdf(sheet, { autoPrint: true });
+  const blobUrl = doc.output("bloburl");
+  const opened = window.open(blobUrl, "_blank");
+
+  if (!opened) {
+    doc.save(`${safeFileName(sheet.title)}_Print.pdf`);
+    alert("The app could not open the print window automatically. I saved a print-ready PDF instead.");
+  }
 }
 
 export default function App() {
@@ -283,6 +322,7 @@ export default function App() {
         <div className="exportActions">
           <button onClick={() => setIsExportView(false)}>Back to Editor</button>
           <button className="primary" onClick={() => savePatchSheetPdf(activeSheet)}>Save PDF</button>
+          <button onClick={() => printPatchSheetPdf(activeSheet)}>Print PDF</button>
         </div>
 
         <div className="exportPage">
