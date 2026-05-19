@@ -7,20 +7,33 @@ const sourceTypes = ["DX1", "DX2", "DX3", "DX4", "Dante"];
 
 const instrumentGroups = [
   { label: "Drums", instruments: ["Kick In", "Kick Out", "Snare Top", "Snare Bottom", "HiHat", "Tom 1", "Tom 2", "Tom 3", "Tom 1 Gate", "Tom 2 Gate", "Tom 3 Gate", "OVH L", "OVH R", "SPD L", "SPD R"] },
-  { label: "Guitars", instruments: ["EG1 L", "EG1 R", "EG2 L", "EG2 R", "Acoustic 1", "Acoustic 2"] },
+  { label: "Aux Percussion", instruments: ["Aux Perc OVH", "Aux Perc Tom", "Aux Perc Snare", "Cajon Front", "Cajon Back"] },
   { label: "Bass", instruments: ["Bass", "Bass Dirty", "Synth Bass"] },
   { label: "Keys / Strings", instruments: ["Piano L", "Piano R", "Keys L", "Keys R", "Cello", "Violin"] },
+  { label: "Electric / Acoustic Guitars", instruments: ["EG1 L", "EG1 R", "EG2 L", "EG2 R", "Acoustic 1", "Acoustic 2"] },
   { label: "Vocals", instruments: ["BGVS 1", "BGVS 2", "BGVS 3", "BGVS 4"] },
-  { label: "Percussion", instruments: ["Aux Perc OVH", "Aux Perc Tom", "Aux Perc Snare", "Cajon Front", "Cajon Back"] },
   { label: "Dante / Tracks", instruments: ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click"] }
 ];
 
 const danteInstruments = ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click", "Keys L", "Keys R"];
+const instrumentOptions = instrumentGroups.flatMap((group) => group.instruments);
+
+const sortOrder = {
+  Drums: 1,
+  "Aux Percussion": 2,
+  Bass: 3,
+  "Keys / Strings": 4,
+  "Electric / Acoustic Guitars": 5,
+  Vocals: 6,
+  Other: 7,
+  "Dante / Tracks": 8
+};
 
 const starterSheet = {
   id: "sheet-1",
   title: "Patch Sheet - May 17, 2026",
   date: "2026-05-17",
+  name: "",
   rows: [
     { id: "1", instrument: "Kick In", sourceType: "DX2", input: 1 },
     { id: "2", instrument: "Kick Out", sourceType: "DX2", input: 2 },
@@ -84,12 +97,25 @@ export function translatePatch(sourceType, physicalInput) {
   return { foh: "", broadcast: "" };
 }
 
-function sortForExport(rows) {
+function groupForInstrument(instrument, sourceType) {
+  if (sourceType === "Dante" || danteInstruments.includes(instrument)) return "Dante / Tracks";
+  const match = instrumentGroups.find((group) => group.instruments.includes(instrument));
+  return match?.label || "Other";
+}
+
+function sortRowsForReadability(rows) {
   return [...rows].sort((a, b) => {
-    if (a.sourceType === "Dante" && b.sourceType !== "Dante") return 1;
-    if (a.sourceType !== "Dante" && b.sourceType === "Dante") return -1;
-    return 0;
+    const groupA = groupForInstrument(a.instrument, a.sourceType);
+    const groupB = groupForInstrument(b.instrument, b.sourceType);
+    const rankA = sortOrder[groupA] || sortOrder.Other;
+    const rankB = sortOrder[groupB] || sortOrder.Other;
+    if (rankA !== rankB) return rankA - rankB;
+    return (a.instrument || "").localeCompare(b.instrument || "");
   });
+}
+
+function sortForExport(rows) {
+  return sortRowsForReadability(rows);
 }
 
 function formatPhysicalPatch(row) {
@@ -122,10 +148,47 @@ function findConflicts(rows) {
     .map(([key, matches]) => ({ key, input: formatPhysicalPatch(matches[0]), instruments: matches.map((row) => row.instrument || "Unnamed input") }));
 }
 
+function getStereoMate(instrument) {
+  if (!instrument) return null;
+  if (instrument.endsWith(" L")) return instrument.replace(/ L$/, " R");
+  if (instrument.endsWith(" R")) return instrument.replace(/ R$/, " L");
+  return null;
+}
+
+function isLeftStereoInstrument(instrument) {
+  return instrument?.endsWith(" L") && instrumentOptions.includes(getStereoMate(instrument));
+}
+
+function findStereoWarnings(rows) {
+  const warnings = [];
+  const byInstrument = new Map(rows.map((row) => [row.instrument, row]));
+
+  rows.forEach((row) => {
+    if (!isLeftStereoInstrument(row.instrument)) return;
+    const rightName = getStereoMate(row.instrument);
+    const right = byInstrument.get(rightName);
+
+    if (Number(row.input) % 2 === 0) {
+      warnings.push(`${row.instrument} starts on an even input (${formatPhysicalPatch(row)}). Stereo pairs should usually start on an odd input.`);
+    }
+
+    if (!right) {
+      warnings.push(`${row.instrument} is missing its stereo pair: ${rightName}.`);
+      return;
+    }
+
+    if (row.sourceType !== right.sourceType || Number(right.input) !== Number(row.input) + 1) {
+      warnings.push(`${row.instrument}/${rightName} are not patched as adjacent inputs.`);
+    }
+  });
+
+  return warnings;
+}
+
 function safeLoadSheets() {
   try {
     const saved = localStorage.getItem("waymakerPatchSheets");
-    return saved ? JSON.parse(saved) : [starterSheet];
+    return saved ? JSON.parse(saved).map((sheet) => ({ name: "", ...sheet })) : [starterSheet];
   } catch {
     return [starterSheet];
   }
@@ -146,7 +209,8 @@ function createPatchSheetPdf(sheet, options = {}) {
   const pageHeight = 792;
   const margin = { top: 54, right: 36, bottom: 54, left: 36 };
   const titleY = margin.top;
-  const tableTop = margin.top + 48;
+  const subtitleY = titleY + 20;
+  const tableTop = margin.top + (sheet.name ? 66 : 48);
   const rowHeight = 20;
   const colWidths = [170, 150, 160];
   const tableWidth = colWidths.reduce((sum, width) => sum + width, 0);
@@ -162,6 +226,11 @@ function createPatchSheetPdf(sheet, options = {}) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text(sheet.title, pageWidth / 2, titleY, { align: "center" });
+    if (sheet.name) {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.text(sheet.name, pageWidth / 2, subtitleY, { align: "center" });
+    }
   }
 
   function drawCell(text, x, y, width, height, fill = false, bold = false) {
@@ -169,7 +238,6 @@ function createPatchSheetPdf(sheet, options = {}) {
       doc.setFillColor(217, 217, 217);
       doc.rect(x, y, width, height, "F");
     }
-
     doc.setDrawColor(0, 0, 0);
     doc.rect(x, y, width, height);
     doc.setTextColor(0, 0, 0);
@@ -219,26 +287,19 @@ function createPatchSheetPdf(sheet, options = {}) {
     });
   }
 
-  if (autoPrint) {
-    doc.autoPrint();
-  }
-
+  if (autoPrint) doc.autoPrint();
   return doc;
 }
 
 function savePatchSheetPdf(sheet) {
-  createPatchSheetPdf(sheet).save(`${safeFileName(sheet.title)}.pdf`);
+  createPatchSheetPdf(sheet).save(`${safeFileName(`${sheet.title} ${sheet.name || ""}`)}.pdf`);
 }
 
 async function printPatchSheetPdf(sheet) {
   const doc = createPatchSheetPdf(sheet);
   const pdfBase64 = doc.output("datauristring").split(",")[1];
-
   try {
-    await invoke("print_pdf", {
-      pdfBase64,
-      filename: safeFileName(sheet.title)
-    });
+    await invoke("print_pdf", { pdfBase64, filename: safeFileName(sheet.title) });
   } catch (error) {
     console.error(error);
     doc.save(`${safeFileName(sheet.title)}_Print.pdf`);
@@ -246,10 +307,16 @@ async function printPatchSheetPdf(sheet) {
   }
 }
 
+function blankNewInput() {
+  return { instrument: "", sourceType: "DX1", input: 1, addStereoMate: false };
+}
+
 export default function App() {
   const [sheets, setSheets] = useState(safeLoadSheets);
   const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
   const [isExportView, setIsExportView] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newInput, setNewInput] = useState(blankNewInput);
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
@@ -261,6 +328,7 @@ export default function App() {
   const previousSheet = activeIndex > 0 ? sheets[activeIndex - 1] : null;
   const changes = useMemo(() => previousSheet ? compareRows(previousSheet.rows, activeSheet.rows) : [], [previousSheet, activeSheet]);
   const conflicts = useMemo(() => findConflicts(activeSheet.rows), [activeSheet.rows]);
+  const stereoWarnings = useMemo(() => findStereoWarnings(activeSheet.rows), [activeSheet.rows]);
 
   function updateActiveSheet(updater) {
     setSheets((current) => current.map((sheet) => sheet.id === activeSheet.id ? updater(sheet) : sheet));
@@ -279,8 +347,25 @@ export default function App() {
     }));
   }
 
-  function addRow() {
-    updateActiveSheet((sheet) => ({ ...sheet, rows: [...sheet.rows, { id: createId(), instrument: "", sourceType: "DX1", input: 1 }] }));
+  function openAddInputModal() {
+    setNewInput(blankNewInput());
+    setIsAddModalOpen(true);
+  }
+
+  function addInput({ keepOpen = false } = {}) {
+    if (!newInput.instrument) return;
+    const rowsToAdd = [{ id: createId(), instrument: newInput.instrument, sourceType: newInput.sourceType, input: Number(newInput.input) }];
+    const mate = getStereoMate(newInput.instrument);
+    if (newInput.addStereoMate && mate) {
+      rowsToAdd.push({ id: createId(), instrument: mate, sourceType: newInput.sourceType, input: Number(newInput.input) + 1 });
+    }
+    updateActiveSheet((sheet) => ({ ...sheet, rows: [...sheet.rows, ...rowsToAdd] }));
+    if (keepOpen) {
+      setNewInput(blankNewInput());
+    } else {
+      setIsAddModalOpen(false);
+      setNewInput(blankNewInput());
+    }
   }
 
   function deleteRow(rowId) {
@@ -293,6 +378,7 @@ export default function App() {
       id: createId(),
       title: `Patch Sheet - ${formatDateForTitle(date)}`,
       date,
+      name: activeSheet.name || "",
       rows: activeSheet.rows.map((row) => ({ ...row, id: createId() }))
     };
     setSheets((current) => [...current, newSheet]);
@@ -303,9 +389,16 @@ export default function App() {
     updateActiveSheet((sheet) => ({ ...sheet, date, title: `Patch Sheet - ${formatDateForTitle(date)}` }));
   }
 
+  function sortActiveSheet() {
+    updateActiveSheet((sheet) => ({ ...sheet, rows: sortRowsForReadability(sheet.rows) }));
+  }
+
   function exportPdf() {
     setIsExportView(true);
   }
+
+  const modalStereoMate = getStereoMate(newInput.instrument);
+  const canAddStereoMate = isLeftStereoInstrument(newInput.instrument) && Number(newInput.input) < getInputOptions(newInput.sourceType).length;
 
   if (isExportView) {
     const sorted = sortForExport(activeSheet.rows);
@@ -314,13 +407,7 @@ export default function App() {
 
     function ExportRow({ row }) {
       const translated = translatePatch(row.sourceType, row.input);
-      return (
-        <tr>
-          <td>{row.instrument}</td>
-          <td>{translated.foh}</td>
-          <td>{translated.broadcast}</td>
-        </tr>
-      );
+      return <tr><td>{row.instrument}</td><td>{translated.foh}</td><td>{translated.broadcast}</td></tr>;
     }
 
     return (
@@ -330,27 +417,14 @@ export default function App() {
           <button className="primary" onClick={() => savePatchSheetPdf(activeSheet)}>Save PDF</button>
           <button onClick={() => printPatchSheetPdf(activeSheet)}>Print PDF</button>
         </div>
-
         <div className="exportPage">
           <h1>{activeSheet.title}</h1>
+          {activeSheet.name && <p className="exportSubtitle">{activeSheet.name}</p>}
           <table className="exportTable">
-            <thead>
-              <tr>
-                <th>Instrument</th>
-                <th>FOH Patch</th>
-                <th>Broadcast Patch</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Instrument</th><th>FOH Patch</th><th>Broadcast Patch</th></tr></thead>
             <tbody>
               {standardRows.map((row) => <ExportRow key={row.id} row={row} />)}
-              {danteRows.length > 0 && (
-                <>
-                  <tr className="sectionRow">
-                    <td colSpan="3">DANTE</td>
-                  </tr>
-                  {danteRows.map((row) => <ExportRow key={row.id} row={row} />)}
-                </>
-              )}
+              {danteRows.length > 0 && <><tr className="sectionRow"><td colSpan="3">DANTE</td></tr>{danteRows.map((row) => <ExportRow key={row.id} row={row} />)}</>}
             </tbody>
           </table>
         </div>
@@ -361,119 +435,42 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div>
-          <div className="eyebrow">Waymaker AVL</div>
-          <h1>Patch Sheet App</h1>
-        </div>
-        <div className="actions">
-          <button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button>
-          <button onClick={addRow}>Add Input</button>
-          <button onClick={exportPdf}>Export PDF</button>
-        </div>
+        <div><div className="eyebrow">Waymaker AVL</div><h1>Patch Sheet App</h1></div>
+        <div className="actions"><button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button><button onClick={openAddInputModal}>Add Input</button><button onClick={sortActiveSheet}>Sort Sheet</button><button onClick={exportPdf}>Export PDF</button></div>
       </header>
 
       <div className="layout">
-        <aside className="archive">
-          <h2>Archive</h2>
-          {sheets.map((sheet) => (
-            <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}>
-              <strong>{sheet.title}</strong>
-              <span>{sheet.date}</span>
-            </button>
-          ))}
-        </aside>
+        <aside className="archive"><h2>Archive</h2>{sheets.map((sheet) => <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}><strong>{sheet.title}</strong>{sheet.name && <em>{sheet.name}</em>}<span>{sheet.date}</span></button>)}</aside>
 
         <main>
-          {conflicts.length > 0 && (
-            <section className="warning">
-              <strong>Patch conflicts found:</strong>
-              {conflicts.map((conflict) => (
-                <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>
-              ))}
-            </section>
-          )}
+          {conflicts.length > 0 && <section className="warning"><strong>Patch conflicts found:</strong>{conflicts.map((conflict) => <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>)}</section>}
+          {stereoWarnings.length > 0 && <section className="warning"><strong>Stereo pair alerts:</strong>{stereoWarnings.map((warning) => <div key={warning}>{warning}</div>)}</section>}
 
           <section className="card">
             <input className="titleInput" value={activeSheet.title} onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, title: e.target.value }))} />
-            <input className="dateInput" type="date" value={activeSheet.date} onChange={(e) => updateSheetDate(e.target.value)} />
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Instrument</th>
-                    <th>Source</th>
-                    <th>Physical Input</th>
-                    <th>FOH Patch</th>
-                    <th>Broadcast Patch</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeSheet.rows.map((row) => {
-                    const translated = translatePatch(row.sourceType, row.input);
-                    const hasConflict = conflicts.some((conflict) => conflict.input === formatPhysicalPatch(row));
-                    return (
-                      <tr key={row.id} className={hasConflict ? "conflictRow" : ""}>
-                        <td>
-                          <select value={row.instrument} onChange={(e) => updateRow(row.id, "instrument", e.target.value)}>
-                            <option value="">Select Instrument</option>
-                            {instrumentGroups.map((group) => (
-                              <optgroup key={group.label} label={group.label}>
-                                {group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <select value={row.sourceType} onChange={(e) => updateRow(row.id, "sourceType", e.target.value)}>
-                            {sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-                          </select>
-                        </td>
-                        <td>
-                          <select value={row.input} onChange={(e) => updateRow(row.id, "input", Number(e.target.value))}>
-                            {getInputOptions(row.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}
-                          </select>
-                        </td>
-                        <td className="patch">{translated.foh}</td>
-                        <td className="patch">{translated.broadcast}</td>
-                        <td><button onClick={() => deleteRow(row.id)}>Delete</button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="sheetMetaGrid">
+              <label><span>Date</span><input className="dateInput" type="date" value={activeSheet.date} onChange={(e) => updateSheetDate(e.target.value)} /></label>
+              <label><span>Sheet Name</span><input value={activeSheet.name || ""} placeholder="Optional name, e.g. Baptism Sunday" onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, name: e.target.value }))} /></label>
             </div>
+            <div className="tableWrap"><table><thead><tr><th>Instrument</th><th>Source</th><th>Physical Input</th><th>FOH Patch</th><th>Broadcast Patch</th><th></th></tr></thead><tbody>
+              {activeSheet.rows.map((row) => {
+                const translated = translatePatch(row.sourceType, row.input);
+                const hasConflict = conflicts.some((conflict) => conflict.input === formatPhysicalPatch(row));
+                return <tr key={row.id} className={hasConflict ? "conflictRow" : ""}>
+                  <td><select value={row.instrument} onChange={(e) => updateRow(row.id, "instrument", e.target.value)}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></td>
+                  <td><select value={row.sourceType} onChange={(e) => updateRow(row.id, "sourceType", e.target.value)}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></td>
+                  <td><select value={row.input} onChange={(e) => updateRow(row.id, "input", Number(e.target.value))}>{getInputOptions(row.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></td>
+                  <td className="patch">{translated.foh}</td><td className="patch">{translated.broadcast}</td><td><button onClick={() => deleteRow(row.id)}>Delete</button></td>
+                </tr>
+              })}
+            </tbody></table></div>
           </section>
 
-          <section className="card">
-            <h2>Change Review</h2>
-            {!previousSheet && <p className="muted">No previous sheet selected for comparison yet.</p>}
-            {previousSheet && changes.length === 0 && <p className="muted">No patch changes from the previous archived sheet.</p>}
-            {changes.length > 0 && (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Instrument</th>
-                    <th>Previous</th>
-                    <th>Current</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {changes.map((change, index) => (
-                    <tr key={`${change.instrument}-${index}`}>
-                      <td className="patch">{change.type}</td>
-                      <td>{change.instrument}</td>
-                      <td className="muted">{change.before}</td>
-                      <td>{change.after}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
+          <section className="card"><h2>Change Review</h2>{!previousSheet && <p className="muted">No previous sheet selected for comparison yet.</p>}{previousSheet && changes.length === 0 && <p className="muted">No patch changes from the previous archived sheet.</p>}{changes.length > 0 && <table><thead><tr><th>Type</th><th>Instrument</th><th>Previous</th><th>Current</th></tr></thead><tbody>{changes.map((change, index) => <tr key={`${change.instrument}-${index}`}><td className="patch">{change.type}</td><td>{change.instrument}</td><td className="muted">{change.before}</td><td>{change.after}</td></tr>)}</tbody></table>}</section>
         </main>
       </div>
+
+      {isAddModalOpen && <div className="modalBackdrop" onClick={() => setIsAddModalOpen(false)}><div className="modal" onClick={(e) => e.stopPropagation()}><h2>Add Input</h2><div className="modalGrid"><label><span>Instrument</span><select value={newInput.instrument} onChange={(e) => { const instrument = e.target.value; setNewInput((current) => ({ ...current, instrument, sourceType: danteInstruments.includes(instrument) ? "Dante" : current.sourceType, addStereoMate: isLeftStereoInstrument(instrument) ? current.addStereoMate : false })); }}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></label><label><span>Source</span><select value={newInput.sourceType} onChange={(e) => setNewInput((current) => ({ ...current, sourceType: e.target.value, input: 1 }))}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label><span>Channel</span><select value={newInput.input} onChange={(e) => setNewInput((current) => ({ ...current, input: Number(e.target.value) }))}>{getInputOptions(newInput.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></label></div>{canAddStereoMate && <label className="checkboxRow"><input type="checkbox" checked={newInput.addStereoMate} onChange={(e) => setNewInput((current) => ({ ...current, addStereoMate: e.target.checked }))} /> Add stereo mate: {modalStereoMate} on ch{Number(newInput.input) + 1}</label>}{canAddStereoMate && Number(newInput.input) % 2 === 0 && <p className="modalWarning">This stereo pair starts on an even input. Consider starting on an odd channel.</p>}<div className="modalActions"><button onClick={() => setIsAddModalOpen(false)}>Cancel</button><button disabled={!newInput.instrument} onClick={() => addInput({ keepOpen: true })}>Add Another</button><button className="primary" disabled={!newInput.instrument} onClick={() => addInput()}>Add Input</button></div></div></div>}
     </div>
   );
 }
