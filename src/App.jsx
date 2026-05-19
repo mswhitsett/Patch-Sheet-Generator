@@ -29,6 +29,18 @@ const sortOrder = {
   "Dante / Tracks": 8
 };
 
+const drumSortOrder = [
+  "Kick In",
+  "Kick Out",
+  "Snare Top",
+  "Snare Bottom",
+  "HiHat",
+  "Tom 1",
+  "Tom 2",
+  "OVH L",
+  "OVH R"
+];
+
 const starterSheet = {
   id: "sheet-1",
   title: "Patch Sheet - May 17, 2026",
@@ -103,13 +115,34 @@ function groupForInstrument(instrument, sourceType) {
   return match?.label || "Other";
 }
 
+function drumRank(instrument) {
+  const index = drumSortOrder.indexOf(instrument);
+  return index === -1 ? 999 : index;
+}
+
 function sortRowsForReadability(rows) {
   return [...rows].sort((a, b) => {
     const groupA = groupForInstrument(a.instrument, a.sourceType);
     const groupB = groupForInstrument(b.instrument, b.sourceType);
     const rankA = sortOrder[groupA] || sortOrder.Other;
     const rankB = sortOrder[groupB] || sortOrder.Other;
+
     if (rankA !== rankB) return rankA - rankB;
+
+    if (groupA === "Drums") {
+      const drumRankA = drumRank(a.instrument);
+      const drumRankB = drumRank(b.instrument);
+      if (drumRankA !== drumRankB) return drumRankA - drumRankB;
+      return (a.instrument || "").localeCompare(b.instrument || "");
+    }
+
+    if (groupA === "Dante / Tracks") {
+      const inputA = Number(a.input || 0);
+      const inputB = Number(b.input || 0);
+      if (inputA !== inputB) return inputA - inputB;
+      return (a.instrument || "").localeCompare(b.instrument || "");
+    }
+
     return (a.instrument || "").localeCompare(b.instrument || "");
   });
 }
@@ -315,7 +348,7 @@ export default function App() {
   const [sheets, setSheets] = useState(safeLoadSheets);
   const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
   const [isExportView, setIsExportView] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddPopoverOpen, setIsAddPopoverOpen] = useState(false);
   const [newInput, setNewInput] = useState(blankNewInput);
 
   useEffect(() => {
@@ -347,9 +380,9 @@ export default function App() {
     }));
   }
 
-  function openAddInputModal() {
+  function openAddInputPopover() {
     setNewInput(blankNewInput());
-    setIsAddModalOpen(true);
+    setIsAddPopoverOpen((current) => !current);
   }
 
   function addInput({ keepOpen = false } = {}) {
@@ -363,7 +396,7 @@ export default function App() {
     if (keepOpen) {
       setNewInput(blankNewInput());
     } else {
-      setIsAddModalOpen(false);
+      setIsAddPopoverOpen(false);
       setNewInput(blankNewInput());
     }
   }
@@ -436,7 +469,27 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <div><div className="eyebrow">Waymaker AVL</div><h1>Patch Sheet App</h1></div>
-        <div className="actions"><button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button><button onClick={openAddInputModal}>Add Input</button><button onClick={sortActiveSheet}>Sort Sheet</button><button onClick={exportPdf}>Export PDF</button></div>
+        <div className="actions">
+          <button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button>
+          <div className="addInputAnchor">
+            <button onClick={openAddInputPopover}>Add Input</button>
+            {isAddPopoverOpen && (
+              <div className="addInputPopover">
+                <h2>Add Input</h2>
+                <div className="modalGrid">
+                  <label><span>Instrument</span><select value={newInput.instrument} onChange={(e) => { const instrument = e.target.value; setNewInput((current) => ({ ...current, instrument, sourceType: danteInstruments.includes(instrument) ? "Dante" : current.sourceType, addStereoMate: isLeftStereoInstrument(instrument) ? current.addStereoMate : false })); }}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></label>
+                  <label><span>Source</span><select value={newInput.sourceType} onChange={(e) => setNewInput((current) => ({ ...current, sourceType: e.target.value, input: 1 }))}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+                  <label><span>Channel</span><select value={newInput.input} onChange={(e) => setNewInput((current) => ({ ...current, input: Number(e.target.value) }))}>{getInputOptions(newInput.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></label>
+                </div>
+                {canAddStereoMate && <label className="checkboxRow"><input type="checkbox" checked={newInput.addStereoMate} onChange={(e) => setNewInput((current) => ({ ...current, addStereoMate: e.target.checked }))} /> Add stereo mate: {modalStereoMate} on ch{Number(newInput.input) + 1}</label>}
+                {canAddStereoMate && Number(newInput.input) % 2 === 0 && <p className="modalWarning">This stereo pair starts on an even input. Consider starting on an odd channel.</p>}
+                <div className="modalActions"><button onClick={() => setIsAddPopoverOpen(false)}>Cancel</button><button disabled={!newInput.instrument} onClick={() => addInput({ keepOpen: true })}>Add Another</button><button className="primary" disabled={!newInput.instrument} onClick={() => addInput()}>Add Input</button></div>
+              </div>
+            )}
+          </div>
+          <button onClick={sortActiveSheet}>Sort Sheet</button>
+          <button onClick={exportPdf}>Export PDF</button>
+        </div>
       </header>
 
       <div className="layout">
@@ -469,8 +522,6 @@ export default function App() {
           <section className="card"><h2>Change Review</h2>{!previousSheet && <p className="muted">No previous sheet selected for comparison yet.</p>}{previousSheet && changes.length === 0 && <p className="muted">No patch changes from the previous archived sheet.</p>}{changes.length > 0 && <table><thead><tr><th>Type</th><th>Instrument</th><th>Previous</th><th>Current</th></tr></thead><tbody>{changes.map((change, index) => <tr key={`${change.instrument}-${index}`}><td className="patch">{change.type}</td><td>{change.instrument}</td><td className="muted">{change.before}</td><td>{change.after}</td></tr>)}</tbody></table>}</section>
         </main>
       </div>
-
-      {isAddModalOpen && <div className="modalBackdrop" onClick={() => setIsAddModalOpen(false)}><div className="modal" onClick={(e) => e.stopPropagation()}><h2>Add Input</h2><div className="modalGrid"><label><span>Instrument</span><select value={newInput.instrument} onChange={(e) => { const instrument = e.target.value; setNewInput((current) => ({ ...current, instrument, sourceType: danteInstruments.includes(instrument) ? "Dante" : current.sourceType, addStereoMate: isLeftStereoInstrument(instrument) ? current.addStereoMate : false })); }}><option value="">Select Instrument</option>{instrumentGroups.map((group) => <optgroup key={group.label} label={group.label}>{group.instruments.map((instrument) => <option key={instrument} value={instrument}>{instrument}</option>)}</optgroup>)}</select></label><label><span>Source</span><select value={newInput.sourceType} onChange={(e) => setNewInput((current) => ({ ...current, sourceType: e.target.value, input: 1 }))}>{sourceTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><label><span>Channel</span><select value={newInput.input} onChange={(e) => setNewInput((current) => ({ ...current, input: Number(e.target.value) }))}>{getInputOptions(newInput.sourceType).map((input) => <option key={input} value={input}>ch{input}</option>)}</select></label></div>{canAddStereoMate && <label className="checkboxRow"><input type="checkbox" checked={newInput.addStereoMate} onChange={(e) => setNewInput((current) => ({ ...current, addStereoMate: e.target.checked }))} /> Add stereo mate: {modalStereoMate} on ch{Number(newInput.input) + 1}</label>}{canAddStereoMate && Number(newInput.input) % 2 === 0 && <p className="modalWarning">This stereo pair starts on an even input. Consider starting on an odd channel.</p>}<div className="modalActions"><button onClick={() => setIsAddModalOpen(false)}>Cancel</button><button disabled={!newInput.instrument} onClick={() => addInput({ keepOpen: true })}>Add Another</button><button className="primary" disabled={!newInput.instrument} onClick={() => addInput()}>Add Input</button></div></div></div>}
     </div>
   );
 }
