@@ -147,9 +147,10 @@ function safeLoadSheets() {
   }
 }
 
-const [sheets, setSheets] = useState(safeLoadSheets);
-const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
-const [isExportView, setIsExportView] = useState(false);
+export default function App() {
+  const [sheets, setSheets] = useState(safeLoadSheets);
+  const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
+  const [isExportView, setIsExportView] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
@@ -204,75 +205,66 @@ const [isExportView, setIsExportView] = useState(false);
   }
 
 function exportPdf() {
-  setIsExportView(true);
-}
-
-if (isExportView) {
-  const sorted = sortForExport(activeSheet.rows);
-  const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
-  const danteRows = sorted.filter((row) => row.sourceType === "Dante");
-
-  function ExportRow({ row }) {
-    const translated = translatePatch(row.sourceType, row.input);
-
-    return (
-      <tr>
-        <td>{row.instrument}</td>
-        <td>{translated.foh}</td>
-        <td>{translated.broadcast}</td>
-      </tr>
-    );
+    setIsExportView(true);
   }
 
-  return (
-    <div className="exportScreen">
-      <div className="exportActions">
-        <button onClick={() => setIsExportView(false)}>
-          Back to Editor
-        </button>
 
-        <button
-          className="primary"
-          onClick={() => window.print()}
-        >
-          Print / Save PDF
-        </button>
+
+  if (isExportView) {
+    const sorted = sortForExport(activeSheet.rows);
+    const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
+    const danteRows = sorted.filter((row) => row.sourceType === "Dante");
+
+    function ExportRow({ row }) {
+      const translated = translatePatch(row.sourceType, row.input);
+
+      return (
+        <tr>
+          <td>{row.instrument}</td>
+          <td>{translated.foh}</td>
+          <td>{translated.broadcast}</td>
+        </tr>
+      );
+    }
+
+    return (
+      <div className="exportScreen">
+        <div className="exportActions">
+          <button onClick={() => setIsExportView(false)}>Back to Editor</button>
+          <button className="primary" onClick={() => window.print()}>Print / Save PDF</button>
+        </div>
+
+        <div className="exportPage">
+          <h1>{activeSheet.title}</h1>
+          <table className="exportTable">
+            <thead>
+              <tr>
+                <th>Instrument</th>
+                <th>FOH Patch</th>
+                <th>Broadcast Patch</th>
+              </tr>
+            </thead>
+            <tbody>
+              {standardRows.map((row) => (
+                <ExportRow key={row.id} row={row} />
+              ))}
+
+              {danteRows.length > 0 && (
+                <>
+                  <tr className="sectionRow">
+                    <td colSpan="3">DANTE</td>
+                  </tr>
+                  {danteRows.map((row) => (
+                    <ExportRow key={row.id} row={row} />
+                  ))}
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-
-      <div className="exportPage">
-        <h1>{activeSheet.title}</h1>
-
-        <table className="exportTable">
-          <thead>
-            <tr>
-              <th>Instrument</th>
-              <th>FOH Patch</th>
-              <th>Broadcast Patch</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {standardRows.map((row) => (
-              <ExportRow key={row.id} row={row} />
-            ))}
-
-            {danteRows.length > 0 && (
-              <>
-                <tr className="sectionRow">
-                  <td colSpan="3">DANTE</td>
-                </tr>
-
-                {danteRows.map((row) => (
-                  <ExportRow key={row.id} row={row} />
-                ))}
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="app">
