@@ -149,6 +149,19 @@ function sortRowsForReadability(rows) {
   });
 }
 
+function sortSheetsNewestFirst(sheets) {
+  return [...sheets].sort((a, b) => {
+    const dateCompare = String(b.date || "").localeCompare(String(a.date || ""));
+    if (dateCompare !== 0) return dateCompare;
+    return String(b.id || "").localeCompare(String(a.id || ""));
+  });
+}
+
+function getPreviousSheet(sheets, activeSheet) {
+  const olderSheets = sheets.filter((sheet) => sheet.id !== activeSheet.id && String(sheet.date || "") < String(activeSheet.date || ""));
+  return sortSheetsNewestFirst(olderSheets)[0] || null;
+}
+
 function sortForExport(rows) {
   return sortRowsForReadability(rows);
 }
@@ -364,8 +377,8 @@ export default function App() {
   }, [sheets, activeSheetId]);
 
   const activeSheet = sheets.find((sheet) => sheet.id === activeSheetId) || sheets[0];
-  const activeIndex = sheets.findIndex((sheet) => sheet.id === activeSheet.id);
-  const previousSheet = activeIndex > 0 ? sheets[activeIndex - 1] : null;
+  const archivedSheets = useMemo(() => sortSheetsNewestFirst(sheets), [sheets]);
+  const previousSheet = useMemo(() => getPreviousSheet(sheets, activeSheet), [sheets, activeSheet]);
   const changes = useMemo(() => previousSheet ? compareRows(previousSheet.rows, activeSheet.rows) : [], [previousSheet, activeSheet]);
   const conflicts = useMemo(() => findConflicts(activeSheet.rows), [activeSheet.rows]);
   const stereoWarnings = useMemo(() => findStereoWarnings(activeSheet.rows), [activeSheet.rows]);
@@ -503,7 +516,7 @@ export default function App() {
       </header>
 
       <div className="layout">
-        <aside className="archive"><h2>Archive</h2>{sheets.map((sheet) => <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}><strong>{sheet.title}</strong>{sheet.name && <em>{sheet.name}</em>}<span>{sheet.date}</span></button>)}</aside>
+        <aside className="archive"><h2>Archive</h2>{archivedSheets.map((sheet) => <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}><strong>{sheet.title}</strong>{sheet.name && <em>{sheet.name}</em>}<span>{sheet.date}</span></button>)}</aside>
 
         <main>
           {conflicts.length > 0 && <section className="warning"><strong>Patch conflicts found:</strong>{conflicts.map((conflict) => <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>)}</section>}
