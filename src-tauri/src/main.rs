@@ -29,9 +29,12 @@ fn print_pdf(pdf_base64: String, filename: String) -> Result<(), String> {
             open POSIX file "{}"
         end tell
 
-        delay 2
+        delay 0.75
 
         tell application "System Events"
+            tell process "Preview"
+                set frontmost to true
+            end tell
             keystroke "p" using command down
         end tell
         "#,
@@ -51,5 +54,5 @@ fn main() {
   tauri::Builder::default()
     .invoke_handler(tauri::generate_handler![print_pdf])
     .run(tauri::generate_context!())
-    .expect("error while running Waymaker Patch Sheet App");
+    .expect("error while running Patch");
 }
