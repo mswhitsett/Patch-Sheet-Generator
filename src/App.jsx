@@ -5,6 +5,16 @@ import "./styles.css";
 
 const sourceTypes = ["DX1", "DX2", "DX3", "DX4", "Dante"];
 
+const wirelessInstruments = [
+  "Red Wireless",
+  "White Wireless",
+  "Green Wireless",
+  "Blue Wireless",
+  "Yellow Wireless",
+  "Green 2 Wireless",
+  "Black Wireless"
+];
+
 const instrumentGroups = [
   { label: "Drums", instruments: ["Kick In", "Kick Out", "Snare Top", "Snare Bottom", "HiHat", "Tom 1", "Tom 2", "Tom 3", "Tom 1 Gate", "Tom 2 Gate", "Tom 3 Gate", "OVH L", "OVH R", "SPD L", "SPD R"] },
   { label: "Aux Percussion", instruments: ["Aux Perc OVH", "Aux Perc Tom", "Aux Perc Snare", "Cajon Front", "Cajon Back"] },
@@ -13,7 +23,8 @@ const instrumentGroups = [
   { label: "Electric / Acoustic Guitars", instruments: ["EG1 L", "EG1 R", "EG2 L", "EG2 R", "Acoustic 1", "Acoustic 2"] },
   { label: "Vocals", instruments: ["BGVS 1", "BGVS 2", "BGVS 3", "BGVS 4"] },
   { label: "Talkback", instruments: ["Talkback Drums", "Talkback Keys", "Talkback MD", "Talkback"] },
-  { label: "Dante / Tracks", instruments: ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click"] }
+  { label: "Dante / Tracks", instruments: ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click"] },
+  { label: "Wireless", instruments: wirelessInstruments }
 ];
 
 const danteInstruments = ["Tracks Pad L", "Tracks Pad R", "Tracks EG L", "Tracks EG R", "Tracks Orch L", "Tracks Orch R", "Tracks Bass", "Tracks Perc", "Click", "Keys L", "Keys R"];
@@ -28,7 +39,8 @@ const sortOrder = {
   Vocals: 6,
   Talkback: 7,
   Other: 8,
-  "Dante / Tracks": 9
+  "Dante / Tracks": 9,
+  Wireless: 10
 };
 
 const drumSortOrder = [
@@ -112,6 +124,7 @@ export function translatePatch(sourceType, physicalInput) {
 }
 
 function groupForInstrument(instrument, sourceType) {
+  if (wirelessInstruments.includes(instrument)) return "Wireless";
   if (sourceType === "Dante" || danteInstruments.includes(instrument)) return "Dante / Tracks";
   const match = instrumentGroups.find((group) => group.instruments.includes(instrument));
   return match?.label || "Other";
@@ -119,6 +132,11 @@ function groupForInstrument(instrument, sourceType) {
 
 function drumRank(instrument) {
   const index = drumSortOrder.indexOf(instrument);
+  return index === -1 ? 999 : index;
+}
+
+function wirelessRank(instrument) {
+  const index = wirelessInstruments.indexOf(instrument);
   return index === -1 ? 999 : index;
 }
 
@@ -142,6 +160,13 @@ function sortRowsForReadability(rows) {
       const inputA = Number(a.input || 0);
       const inputB = Number(b.input || 0);
       if (inputA !== inputB) return inputA - inputB;
+      return (a.instrument || "").localeCompare(b.instrument || "");
+    }
+
+    if (groupA === "Wireless") {
+      const wirelessRankA = wirelessRank(a.instrument);
+      const wirelessRankB = wirelessRank(b.instrument);
+      if (wirelessRankA !== wirelessRankB) return wirelessRankA - wirelessRankB;
       return (a.instrument || "").localeCompare(b.instrument || "");
     }
 
@@ -270,8 +295,9 @@ function createPatchSheetPdf(sheet, options = {}) {
   const bottomLimit = pageHeight - margin.bottom;
 
   const sorted = sortForExport(sheet.rows);
-  const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
-  const danteRows = sorted.filter((row) => row.sourceType === "Dante");
+  const standardRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Dante / Tracks" && groupForInstrument(row.instrument, row.sourceType) !== "Wireless");
+  const danteRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Dante / Tracks");
+  const wirelessRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless");
 
   function drawTitle() {
     doc.setTextColor(0, 0, 0);
@@ -320,6 +346,18 @@ function createPatchSheetPdf(sheet, options = {}) {
     return y + rowHeight;
   }
 
+  function drawSection(label, rows, y) {
+    if (rows.length === 0) return y;
+    y = ensureSpace(y, 2);
+    drawCell(label, startX, y, tableWidth, rowHeight, true, true);
+    y += rowHeight;
+    rows.forEach((row) => {
+      y = ensureSpace(y);
+      y = drawRow(row, y);
+    });
+    return y;
+  }
+
   drawTitle();
   let y = drawHeader(tableTop);
 
@@ -328,16 +366,8 @@ function createPatchSheetPdf(sheet, options = {}) {
     y = drawRow(row, y);
   });
 
-  if (danteRows.length > 0) {
-    y = ensureSpace(y, 2);
-    drawCell("DANTE", startX, y, tableWidth, rowHeight, true, true);
-    y += rowHeight;
-
-    danteRows.forEach((row) => {
-      y = ensureSpace(y);
-      y = drawRow(row, y);
-    });
-  }
+  y = drawSection("DANTE", danteRows, y);
+  y = drawSection("WIRELESS", wirelessRows, y);
 
   if (autoPrint) doc.autoPrint();
   return doc;
@@ -456,8 +486,9 @@ export default function App() {
 
   if (isExportView) {
     const sorted = sortForExport(activeSheet.rows);
-    const standardRows = sorted.filter((row) => row.sourceType !== "Dante");
-    const danteRows = sorted.filter((row) => row.sourceType === "Dante");
+    const standardRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Dante / Tracks" && groupForInstrument(row.instrument, row.sourceType) !== "Wireless");
+    const danteRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Dante / Tracks");
+    const wirelessRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless");
 
     function ExportRow({ row }) {
       const translated = translatePatch(row.sourceType, row.input);
@@ -479,6 +510,7 @@ export default function App() {
             <tbody>
               {standardRows.map((row) => <ExportRow key={row.id} row={row} />)}
               {danteRows.length > 0 && <><tr className="sectionRow"><td colSpan="3">DANTE</td></tr>{danteRows.map((row) => <ExportRow key={row.id} row={row} />)}</>}
+              {wirelessRows.length > 0 && <><tr className="sectionRow"><td colSpan="3">WIRELESS</td></tr>{wirelessRows.map((row) => <ExportRow key={row.id} row={row} />)}</>}
             </tbody>
           </table>
         </div>
