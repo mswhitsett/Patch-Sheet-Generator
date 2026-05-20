@@ -279,7 +279,7 @@ function safeFileName(value) {
 }
 
 function createPatchSheetPdf(sheet, options = {}) {
-  const { autoPrint = false } = options;
+  const { autoPrint = false, includeWireless = true } = options;
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
 
   const pageWidth = 612;
@@ -297,7 +297,7 @@ function createPatchSheetPdf(sheet, options = {}) {
   const sorted = sortForExport(sheet.rows);
   const standardRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Dante / Tracks" && groupForInstrument(row.instrument, row.sourceType) !== "Wireless");
   const danteRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Dante / Tracks");
-  const wirelessRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless");
+  const wirelessRows = includeWireless ? sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless") : [];
 
   function drawTitle() {
     doc.setTextColor(0, 0, 0);
@@ -373,12 +373,12 @@ function createPatchSheetPdf(sheet, options = {}) {
   return doc;
 }
 
-function savePatchSheetPdf(sheet) {
-  createPatchSheetPdf(sheet).save(`${safeFileName(`${sheet.title} ${sheet.name || ""}`)}.pdf`);
+function savePatchSheetPdf(sheet, options = {}) {
+  createPatchSheetPdf(sheet, options).save(`${safeFileName(`${sheet.title} ${sheet.name || ""}`)}.pdf`);
 }
 
-async function printPatchSheetPdf(sheet) {
-  const doc = createPatchSheetPdf(sheet);
+async function printPatchSheetPdf(sheet, options = {}) {
+  const doc = createPatchSheetPdf(sheet, options);
   const pdfBase64 = doc.output("datauristring").split(",")[1];
   try {
     await invoke("print_pdf", { pdfBase64, filename: safeFileName(sheet.title) });
@@ -400,11 +400,16 @@ export default function App() {
   const [isAddPopoverOpen, setIsAddPopoverOpen] = useState(false);
   const [newInput, setNewInput] = useState(blankNewInput);
   const [lastAddedInput, setLastAddedInput] = useState(null);
+  const [hideWireless, setHideWireless] = useState(() => localStorage.getItem("hideWirelessMics") === "true");
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
     localStorage.setItem("activePatchSheetId", activeSheetId);
   }, [sheets, activeSheetId]);
+
+  useEffect(() => {
+    localStorage.setItem("hideWirelessMics", String(hideWireless));
+  }, [hideWireless]);
 
   const activeSheet = sheets.find((sheet) => sheet.id === activeSheetId) || sheets[0];
   const archivedSheets = useMemo(() => sortSheetsNewestFirst(sheets), [sheets]);
@@ -412,6 +417,7 @@ export default function App() {
   const changes = useMemo(() => previousSheet ? compareRows(previousSheet.rows, activeSheet.rows) : [], [previousSheet, activeSheet]);
   const conflicts = useMemo(() => findConflicts(activeSheet.rows), [activeSheet.rows]);
   const stereoWarnings = useMemo(() => findStereoWarnings(activeSheet.rows), [activeSheet.rows]);
+  const visibleRows = useMemo(() => hideWireless ? activeSheet.rows.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Wireless") : activeSheet.rows, [activeSheet.rows, hideWireless]);
   const popupConflict = getInputAssignment(activeSheet.rows, newInput.sourceType, newInput.input);
 
   function updateActiveSheet(updater) {
@@ -483,12 +489,13 @@ export default function App() {
 
   const modalStereoMate = getStereoMate(newInput.instrument);
   const canAddStereoMate = isLeftStereoInstrument(newInput.instrument) && Number(newInput.input) < getInputOptions(newInput.sourceType).length;
+  const includeWirelessInExport = !hideWireless;
 
   if (isExportView) {
     const sorted = sortForExport(activeSheet.rows);
     const standardRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Dante / Tracks" && groupForInstrument(row.instrument, row.sourceType) !== "Wireless");
     const danteRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Dante / Tracks");
-    const wirelessRows = sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless");
+    const wirelessRows = includeWirelessInExport ? sorted.filter((row) => groupForInstrument(row.instrument, row.sourceType) === "Wireless") : [];
 
     function ExportRow({ row }) {
       const translated = translatePatch(row.sourceType, row.input);
@@ -499,8 +506,8 @@ export default function App() {
       <div className="exportScreen">
         <div className="exportActions">
           <button onClick={() => setIsExportView(false)}>Back to Editor</button>
-          <button className="primary" onClick={() => savePatchSheetPdf(activeSheet)}>Save PDF</button>
-          <button onClick={() => printPatchSheetPdf(activeSheet)}>Print PDF</button>
+          <button className="primary" onClick={() => savePatchSheetPdf(activeSheet, { includeWireless: includeWirelessInExport })}>Save PDF</button>
+          <button onClick={() => printPatchSheetPdf(activeSheet, { includeWireless: includeWirelessInExport })}>Print PDF</button>
         </div>
         <div className="exportPage">
           <h1>{activeSheet.title}</h1>
@@ -543,6 +550,7 @@ export default function App() {
             )}
           </div>
           <button onClick={sortActiveSheet}>Sort Sheet</button>
+          <button onClick={() => setHideWireless((current) => !current)}>{hideWireless ? "Show Wireless" : "Hide Wireless"}</button>
           <button onClick={exportPdf}>Export PDF</button>
         </div>
       </header>
@@ -561,7 +569,7 @@ export default function App() {
               <label><span>Sheet Name</span><input value={activeSheet.name || ""} placeholder="Optional name, e.g. Baptism Sunday" onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, name: e.target.value }))} /></label>
             </div>
             <div className="tableWrap"><table><thead><tr><th>Instrument</th><th>Source</th><th>Physical Input</th><th>FOH Patch</th><th>Broadcast Patch</th><th></th></tr></thead><tbody>
-              {activeSheet.rows.map((row) => {
+              {visibleRows.map((row) => {
                 const translated = translatePatch(row.sourceType, row.input);
                 const hasConflict = conflicts.some((conflict) => conflict.input === formatPhysicalPatch(row));
                 return <tr key={row.id} className={hasConflict ? "conflictRow" : ""}>
