@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Patch",
-  "version": "1.0.0",
-  "identifier": "church.waymaker.patchsheet",
+  "productName": "Patch 2",
+  "version": "2.0.0",
+  "identifier": "church.waymaker.patchsheet.v2",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Patch v1.0",
+        "title": "Patch v2.0",
         "width": 1400,
         "height": 900,
         "resizable": true,
