@@ -69,7 +69,6 @@ begin
     new_version := current_sheet.version + 1;
     update public.patch_sheets set title=p_title, sheet_date=p_sheet_date, name=p_name, status=p_status,
       version=new_version, updated_at=now(), updated_by=auth.uid() where id=p_sheet_id;
-    delete from public.patch_rows where sheet_id=p_sheet_id;
   else
     if p_expected_version <> 0 then raise exception 'Version conflict: sheet no longer exists'; end if;
     new_version := 1;
@@ -78,7 +77,13 @@ begin
   end if;
   insert into public.patch_rows(id,sheet_id,instrument,source_type,input_number,position,updated_by)
   select (x->>'id')::uuid,p_sheet_id,coalesce(x->>'instrument',''),x->>'source_type',(x->>'input_number')::int,
-    (x->>'position')::int,auth.uid() from jsonb_array_elements(p_rows) x;
+    (x->>'position')::int,auth.uid() from jsonb_array_elements(p_rows) x
+  on conflict (id) do update set
+    instrument=excluded.instrument, source_type=excluded.source_type, input_number=excluded.input_number,
+    position=excluded.position, version=patch_rows.version+1, updated_at=now(), updated_by=auth.uid()
+  where patch_rows.sheet_id=p_sheet_id;
+  delete from public.patch_rows r where r.sheet_id=p_sheet_id
+    and not exists (select 1 from jsonb_array_elements(p_rows) x where (x->>'id')::uuid=r.id);
   return new_version;
 end $$;
 
