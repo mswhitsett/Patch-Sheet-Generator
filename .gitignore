@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+local-archive-backup.sqlite3
+local-archive-export.json
+src-tauri/target/
+
