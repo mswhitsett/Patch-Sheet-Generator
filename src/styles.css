@@ -98,6 +98,18 @@ button.primary:hover {
   padding: 20px;
 }
 
+.presence { padding: 14px 18px; border-radius: 14px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(96, 165, 250, 0.35); }
+.saveStatus { color: #9ca3af; font-size: 13px; margin-top: 5px; }
+.errorText { color: #f87171; }
+.finalNotice { color: #fbbf24; }
+.sheetHeading { display: flex; gap: 16px; align-items: center; }
+.statusSelect { width: 120px; }
+.buttonLabel { display: inline-flex; align-items: center; border: 1px solid #3a3a3a; background: #2a2a2a; padding: 10px 14px; border-radius: 12px; cursor: pointer; }
+.buttonLabel input { display: none; }
+.centerCard { width: min(460px, calc(100% - 40px)); margin: 12vh auto; padding: 28px; background: #212121; border: 1px solid #333; border-radius: 20px; }
+.centerCard form, .centerCard label { display: grid; gap: 12px; }
+.centerCard label { gap: 6px; }
+
 .archive h2,
 .card h2 {
   margin-top: 0;
