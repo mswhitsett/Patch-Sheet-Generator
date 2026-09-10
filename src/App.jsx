@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { jsPDF } from "jspdf";
+import { cloudConfigured, importLocalSheets, joinSheetPresence, loadSheets, saveSheet, signIn, signOut, subscribeToArchive, supabase } from "./cloud";
 import "./styles.css";
 
 const sourceTypes = ["DX1", "DX2", "DX3", "DX4", "Dante"];
@@ -37,8 +38,8 @@ const sortOrder = {
   "Keys / Strings": 4,
   "Electric / Acoustic Guitars": 5,
   Vocals: 6,
-  Talkback: 7,
-  Other: 8,
+  Other: 7,
+  Talkback: 8,
   "Dante / Tracks": 9,
   Wireless: 10
 };
@@ -56,7 +57,7 @@ const drumSortOrder = [
 ];
 
 const starterSheet = {
-  id: "sheet-1",
+  id: "00000000-0000-4000-8000-000000000001",
   title: "Patch Sheet - May 17, 2026",
   date: "2026-05-17",
   name: "",
@@ -93,7 +94,7 @@ const starterSheet = {
 };
 
 function createId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return crypto.randomUUID();
 }
 
 function formatDateForTitle(dateString) {
@@ -176,6 +177,8 @@ function sortRowsForReadability(rows) {
 
 function sortSheetsNewestFirst(sheets) {
   return [...sheets].sort((a, b) => {
+    const createdCompare = String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    if (createdCompare !== 0) return createdCompare;
     const dateCompare = String(b.date || "").localeCompare(String(a.date || ""));
     if (dateCompare !== 0) return dateCompare;
     return String(b.id || "").localeCompare(String(a.id || ""));
@@ -395,12 +398,52 @@ function blankNewInput() {
 
 export default function App() {
   const [sheets, setSheets] = useState(safeLoadSheets);
-  const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "sheet-1");
+  const [activeSheetId, setActiveSheetId] = useState(() => localStorage.getItem("activePatchSheetId") || "00000000-0000-4000-8000-000000000001");
   const [isExportView, setIsExportView] = useState(false);
   const [isAddPopoverOpen, setIsAddPopoverOpen] = useState(false);
   const [newInput, setNewInput] = useState(blankNewInput);
   const [lastAddedInput, setLastAddedInput] = useState(null);
   const [hideWireless, setHideWireless] = useState(() => localStorage.getItem("hideWirelessMics") === "true");
+  const [session, setSession] = useState(null);
+  const [cloudReady, setCloudReady] = useState(false);
+  const [saveState, setSaveState] = useState("Saved");
+  const [saveError, setSaveError] = useState("");
+  const [viewers, setViewers] = useState([]);
+  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authError, setAuthError] = useState("");
+  const suppressSave = useRef(true);
+  const activeSheet = sheets.find((sheet) => sheet.id === activeSheetId) || sheets[0];
+
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    async function refresh() {
+      try {
+        const remote = await loadSheets();
+        if (!cancelled) {
+          suppressSave.current = true;
+          if (remote.length) {
+            setSheets(remote);
+            setActiveSheetId((current) => remote.some((sheet) => sheet.id === current) ? current : remote[0].id);
+          }
+          setCloudReady(true);
+          setSaveState("Saved");
+        }
+      } catch (error) {
+        if (!cancelled) { setSaveState("Connection error"); setSaveError(error.message); setCloudReady(true); }
+      }
+    }
+    refresh();
+    const channel = subscribeToArchive(() => refresh());
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [session]);
 
   useEffect(() => {
     localStorage.setItem("waymakerPatchSheets", JSON.stringify(sheets));
@@ -408,10 +451,26 @@ export default function App() {
   }, [sheets, activeSheetId]);
 
   useEffect(() => {
+    if (!session || !cloudReady || !activeSheet) return;
+    if (suppressSave.current) { suppressSave.current = false; return; }
+    setSaveState("Saving…");
+    const timer = setTimeout(async () => {
+      try {
+        const version = await saveSheet(activeSheet, activeSheet.version || 0);
+        suppressSave.current = true;
+        setSheets((current) => current.map((sheet) => sheet.id === activeSheet.id ? { ...sheet, version } : sheet));
+        setSaveState("Saved"); setSaveError("");
+      } catch (error) {
+        setSaveState("Connection error"); setSaveError(error.message);
+      }
+    }, 650);
+    return () => clearTimeout(timer);
+  }, [sheets, activeSheetId, session, cloudReady]);
+
+  useEffect(() => {
     localStorage.setItem("hideWirelessMics", String(hideWireless));
   }, [hideWireless]);
 
-  const activeSheet = sheets.find((sheet) => sheet.id === activeSheetId) || sheets[0];
   const archivedSheets = useMemo(() => sortSheetsNewestFirst(sheets), [sheets]);
   const previousSheet = useMemo(() => getPreviousSheet(sheets, activeSheet), [sheets, activeSheet]);
   const changes = useMemo(() => previousSheet ? compareRows(previousSheet.rows, activeSheet.rows) : [], [previousSheet, activeSheet]);
@@ -420,8 +479,20 @@ export default function App() {
   const visibleRows = useMemo(() => hideWireless ? activeSheet.rows.filter((row) => groupForInstrument(row.instrument, row.sourceType) !== "Wireless") : activeSheet.rows, [activeSheet.rows, hideWireless]);
   const popupConflict = getInputAssignment(activeSheet.rows, newInput.sourceType, newInput.input);
 
+  useEffect(() => {
+    if (!session || !cloudReady || !activeSheet?.id) return;
+    setViewers([]);
+    const channel = joinSheetPresence(activeSheet.id, session.user, setViewers);
+    return () => supabase.removeChannel(channel);
+  }, [activeSheetId, session, cloudReady]);
+
   function updateActiveSheet(updater) {
+    if (activeSheet.status === "final") return;
     setSheets((current) => current.map((sheet) => sheet.id === activeSheet.id ? updater(sheet) : sheet));
+  }
+
+  function updateSheetStatus(status) {
+    setSheets((current) => current.map((sheet) => sheet.id === activeSheet.id ? { ...sheet, status } : sheet));
   }
 
   function updateRow(rowId, field, value) {
@@ -463,12 +534,16 @@ export default function App() {
   }
 
   function duplicateSheet() {
-    const date = nextSunday();
+    const date = window.prompt("Date for the duplicated sheet (YYYY-MM-DD)", nextSunday());
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     const newSheet = {
       id: createId(),
       title: `Patch Sheet - ${formatDateForTitle(date)}`,
       date,
       name: activeSheet.name || "",
+      status: "draft",
+      version: 0,
+      created_at: new Date().toISOString(),
       rows: activeSheet.rows.map((row) => ({ ...row, id: createId() }))
     };
     setSheets((current) => [...current, newSheet]);
@@ -490,6 +565,27 @@ export default function App() {
   const modalStereoMate = getStereoMate(newInput.instrument);
   const canAddStereoMate = isLeftStereoInstrument(newInput.instrument) && Number(newInput.input) < getInputOptions(newInput.sourceType).length;
   const includeWirelessInExport = !hideWireless;
+
+  async function submitSignIn(event) {
+    event.preventDefault(); setAuthError("");
+    try { await signIn(authForm.email, authForm.password); }
+    catch (error) { setAuthError(error.message); }
+  }
+
+  async function migrateArchive(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const count = await importLocalSheets(Array.isArray(parsed) ? parsed : parsed.sheets);
+      alert(`Uploaded ${count} local patch sheets. Your original archive file was not changed.`);
+      setSheets(await loadSheets());
+    } catch (error) { alert(`Migration failed: ${error.message}`); }
+    event.target.value = "";
+  }
+
+  if (!cloudConfigured) return <div className="centerCard"><h1>Patch 2 setup required</h1><p>Add the Supabase URL and browser-safe key described in README.md. Never use a service-role key.</p></div>;
+  if (!session) return <div className="centerCard"><form onSubmit={submitSignIn}><h1>Sign in to Patch 2</h1><label>Email<input type="email" required value={authForm.email} onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })} /></label><label>Password<input type="password" required value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} /></label>{authError && <p className="errorText">{authError}</p>}<button className="primary">Sign in</button></form></div>;
 
   if (isExportView) {
     const sorted = sortForExport(activeSheet.rows);
@@ -528,9 +624,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div><div className="eyebrow">Waymaker AVL</div><h1>Patch Sheet App</h1></div>
+        <div><div className="eyebrow">Waymaker AVL · Patch 2</div><h1>Patch Sheet App</h1><div className={`saveStatus ${saveState === "Connection error" ? "errorText" : ""}`} title={saveError}>{saveState}</div></div>
         <div className="actions">
-          <button className="primary" onClick={duplicateSheet}>Duplicate Last Sunday</button>
+          <button className="primary" onClick={duplicateSheet}>Duplicate This Sheet</button>
           <div className="addInputAnchor">
             <button onClick={openAddInputPopover}>Add Input</button>
             {isAddPopoverOpen && (
@@ -552,6 +648,8 @@ export default function App() {
           <button onClick={sortActiveSheet}>Sort Sheet</button>
           <button onClick={() => setHideWireless((current) => !current)}>{hideWireless ? "Show Wireless" : "Hide Wireless"}</button>
           <button onClick={exportPdf}>Export PDF</button>
+          <label className="buttonLabel">Migrate v1 Archive<input type="file" accept="application/json" onChange={migrateArchive} /></label>
+          <button onClick={signOut}>Sign Out</button>
         </div>
       </header>
 
@@ -559,11 +657,13 @@ export default function App() {
         <aside className="archive"><h2>Archive</h2>{archivedSheets.map((sheet) => <button key={sheet.id} className={sheet.id === activeSheet.id ? "active" : ""} onClick={() => setActiveSheetId(sheet.id)}><strong>{sheet.title}</strong>{sheet.name && <em>{sheet.name}</em>}<span>{sheet.date}</span></button>)}</aside>
 
         <main>
+          {viewers.length > 0 && <section className="presence"><strong>Also viewing:</strong> {viewers.map((viewer) => viewer.name || viewer.email).join(", ")}. Changes sync live.</section>}
           {conflicts.length > 0 && <section className="warning"><strong>Patch conflicts found:</strong>{conflicts.map((conflict) => <div key={conflict.key}>{conflict.input}: {conflict.instruments.join(", ")}</div>)}</section>}
           {stereoWarnings.length > 0 && <section className="warning"><strong>Stereo pair alerts:</strong>{stereoWarnings.map((warning) => <div key={warning}>{warning}</div>)}</section>}
 
           <section className="card">
-            <input className="titleInput" value={activeSheet.title} onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, title: e.target.value }))} />
+            <div className="sheetHeading"><input disabled={activeSheet.status === "final"} className="titleInput" value={activeSheet.title} onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, title: e.target.value }))} /><select className="statusSelect" value={activeSheet.status || "draft"} onChange={(e) => updateSheetStatus(e.target.value)}><option value="draft">Draft</option><option value="final">Final</option></select></div>
+            {activeSheet.status === "final" && <p className="finalNotice">Final sheets are locked. Change the status to Draft before editing.</p>}
             <div className="sheetMetaGrid">
               <label><span>Date</span><input className="dateInput" type="date" value={activeSheet.date} onChange={(e) => updateSheetDate(e.target.value)} /></label>
               <label><span>Sheet Name</span><input value={activeSheet.name || ""} placeholder="Optional name, e.g. Baptism Sunday" onChange={(e) => updateActiveSheet((sheet) => ({ ...sheet, name: e.target.value }))} /></label>
